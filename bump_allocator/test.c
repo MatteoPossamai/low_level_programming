@@ -58,8 +58,9 @@ int test_4(){
     int* val1 = (int *)alloc_malloc(&arena, sizeof(int));
     int* val2 = (int *)alloc_malloc(&arena, sizeof(int));
     int* val3 = (int *)alloc_malloc(&arena, sizeof(int));
+    int diff = ALIGN / sizeof(int);
 
-    if (val1 + 1 != val2 || val2 + 1 != val3) {
+    if (val1 + diff != val2 || val2 + diff != val3) {
         printf("4. Invalid layout\n");
         return 1;
     }
@@ -98,11 +99,11 @@ int test_5(){
 
 int test_6(){
     Arena arena = {0};
-    if (alloc_init(&arena, sizeof(int)) != 0){
+    if (alloc_init(&arena, ALIGN) != 0){
         printf("6. Init failed\n");
         return 1;
     }
-    int* val1 = (int *)alloc_malloc(&arena, sizeof(int));
+    char* val1 = (char *)alloc_malloc(&arena, sizeof(char));
 
     if (val1 == 0) {
         printf("6. Should initialize correctly");
@@ -111,7 +112,13 @@ int test_6(){
     char* val2 = (char *)alloc_malloc(&arena, sizeof(char));
 
     if (val2 != 0) {
-        printf("6. Should not initialize over dimension of buffer");
+        printf("6. Should not initialize over dimension of buffer\n");
+        return 1;
+    }
+    alloc_reset(&arena);
+    int* val3 = (int*)alloc_malloc(&arena, sizeof(int));
+    if (val3 == 0){
+        printf("6. After restart should have available space\n");
         return 1;
     }
 

@@ -27,11 +27,13 @@ void * alloc_malloc(Arena* arena, size_t size){
     if (arena->ptr == 0){
         return 0; // Need initialized memory
     }
-    if ((size_t)(arena->buffer + arena->buff_size - arena->ptr) < size){
+    size_t aligned = (size % ALIGN == 0) ? size : size + (ALIGN - (size % ALIGN));
+    if (aligned > (size_t)(arena->buffer + arena->buff_size - arena->ptr)){
         return 0; // Out of memory
     }
-    arena->ptr += size;
-    return arena->ptr - size;
+    char* res = arena->ptr;
+    arena->ptr += aligned;
+    return (void*)res;
 }
 
 int alloc_free(Arena* arena, void* ptr) { (void)ptr; return 0; }

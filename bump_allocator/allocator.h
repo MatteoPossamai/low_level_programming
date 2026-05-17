@@ -1,7 +1,7 @@
 #ifndef ALLOCATOR_H
 #define ALLOCATOR_H
 #include <stddef.h>
-
+#define ALIGN 16
 typedef struct {
     char* buffer;
     char* ptr;
