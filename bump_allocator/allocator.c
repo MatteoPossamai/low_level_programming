@@ -1,42 +1,38 @@
 #include <sys/mman.h>
 #include <stdio.h>
+#include "allocator.h"
 
-char* buffer;
-char* ptr = 0;
-size_t buff_size;
-
-
-int alloc_init(size_t size){
-    if (ptr != 0){
+int alloc_init(Arena* arena, size_t size){
+    if (arena->ptr != 0){
         return 1; // Invalid if the memory is already initialized. Need de-initialization
     }
-    buffer= mmap(0,size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (buffer == MAP_FAILED) { perror("mmap"); return 1; }
-    ptr = buffer;
-    buff_size = size;
+    arena->buffer= mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (arena->buffer == MAP_FAILED) { perror("mmap"); return 1; }
+    arena->ptr = arena->buffer;
+    arena->buff_size = size;
     return 0;
 }
  
-int alloc_deinit(){
-    if (ptr == 0){
+int alloc_deinit(Arena* arena){
+    if (arena->ptr == 0){
         return 1; // Cannot de-init if never initialized
     }
-    munmap(buffer, buff_size);
-    ptr = 0;
-    buff_size = 0;
+    munmap(arena->buffer, arena->buff_size);
+    arena->ptr = 0;
+    arena->buff_size = 0;
     return 0;
 }
 
-void * alloc_malloc(size_t size){
-    if (ptr == 0){
+void * alloc_malloc(Arena* arena, size_t size){
+    if (arena->ptr == 0){
         return 0; // Need initialized memory
     }
-    if (ptr + size > buffer + buff_size) {
+    if ((size_t)(arena->buffer + arena->buff_size - arena->ptr) < size){
         return 0; // Out of memory
     }
-    ptr += size;
-    return ptr - size;
+    arena->ptr += size;
+    return arena->ptr - size;
 }
 
-
-int alloc_free(void *){ }
+int alloc_free(Arena* arena, void* ptr) { (void)ptr; return 0; }
+int alloc_reset(Arena* arena){ arena->ptr = arena->buffer; return 0;}
