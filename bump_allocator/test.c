@@ -82,13 +82,13 @@ int test_4(){
 int test_5(){
     Arena arena = {0};
     if (alloc_init(&arena, 1) != 0){
-        printf("6. Init failed\n");
+        printf("5. Init failed\n");
         return 1;
     }
     int* val1 = (int *)alloc_malloc(&arena, sizeof(int));
 
     if (val1 != 0) {
-        printf("6. Should not initialize over dimension of buffer");
+        printf("5. Should not initialize over dimension of buffer");
         return 1;
     }
 

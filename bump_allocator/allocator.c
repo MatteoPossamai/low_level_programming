@@ -36,5 +36,9 @@ void * alloc_malloc(Arena* arena, size_t size){
     return (void*)res;
 }
 
-int alloc_free(Arena* arena, void* ptr) { (void)ptr; return 0; }
-int alloc_reset(Arena* arena){ arena->ptr = arena->buffer; return 0;}
+int alloc_free(Arena* arena, void* ptr) { (void)arena; (void)ptr; return 0; }
+int alloc_reset(Arena* arena) {
+       if (arena->ptr == 0) return 1;
+       arena->ptr = arena->buffer;
+       return 0;
+   }
