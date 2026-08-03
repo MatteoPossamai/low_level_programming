@@ -2,6 +2,16 @@
 
 Simple allocator for Arena style allocation.
 
+## Instruction
+
+Bump allocator
+
+- `mmap` a big chunk, hand out pieces by incrementing pointer
+- No free yet (no-op)
+- 5-10 unit tests
+- Commit to GitHub with `README` explaining design
+- Done when: tests pass
+
 ## Structure
 
 Based off of the structure:
@@ -47,4 +57,3 @@ This is likely the fastest approach since is just appending at the end of a
   errors and use the same structure in different files;
 - Right initialization is very important. Issues might not be exposed by the
   compiler, or might be cryptic;
-
