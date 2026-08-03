@@ -158,18 +158,19 @@ int test_9() {
   return 0;
 }
 
-// Header overhead must count against capacity: payload alone fitting
-// is not enough, header + payload must fit.
+// Overhead must count against capacity: header (16) + footer (8) = 24
+// bytes per block, so region 72 holds exactly one 48-byte payload.
 int test_10() {
   Allocator allocator = {0};
-  alloc_init(&allocator, 64);
-  // 64 - 16 header = 48 max payload. 60 fits region but not with header.
-  void *a = alloc_malloc(&allocator, 60);
+  alloc_init(&allocator, 72);
+  // 56 rounds to 64; 64 + 24 = 88 > 72, must fail.
+  void *a = alloc_malloc(&allocator, 56);
   if (a != 0) {
-    printf("10. Allocation ignoring header overhead succeeded\n");
+    printf("10. Allocation ignoring header/footer overhead succeeded\n");
     alloc_deinit(&allocator);
     return 1;
   }
+  // 48 + 24 = 72, exact fit.
   void *b = alloc_malloc(&allocator, 48);
   if (b == 0) {
     printf("10. Exact-fit allocation failed\n");
@@ -239,6 +240,150 @@ int test_12() {
   return 0;
 }
 
+// Forward coalescing: free B, then free A. A must absorb B, so a
+// request bigger than either single block fits at A's address.
+// Merged payload: 32 + 32 + 24 (B's header+footer become payload) = 88.
+int test_13() {
+  Allocator allocator = {0};
+  alloc_init(&allocator, 4096);
+  void *a = alloc_malloc(&allocator, 32);
+  void *b = alloc_malloc(&allocator, 32);
+  void *c = alloc_malloc(&allocator, 32); // guard: keeps B off last_ptr edge
+  memset(c, 0x77, 32);
+  alloc_free(&allocator, b);
+  alloc_free(&allocator, a);
+  void *big = alloc_malloc(&allocator, 64);
+  if (big != a) {
+    printf("13. Forward coalesce failed (a=%p big=%p)\n", a, big);
+    alloc_deinit(&allocator);
+    return 1;
+  }
+  if (((unsigned char *)c)[0] != 0x77 || ((unsigned char *)c)[31] != 0x77) {
+    printf("13. Coalescing corrupted the guard block\n");
+    alloc_deinit(&allocator);
+    return 1;
+  }
+  alloc_deinit(&allocator);
+  printf("Test 13 - Success\n");
+  return 0;
+}
+
+// Backward coalescing: free A, then free B. B must merge into A.
+int test_14() {
+  Allocator allocator = {0};
+  alloc_init(&allocator, 4096);
+  void *a = alloc_malloc(&allocator, 32);
+  void *b = alloc_malloc(&allocator, 32);
+  void *c = alloc_malloc(&allocator, 32);
+  memset(c, 0x77, 32);
+  alloc_free(&allocator, a);
+  alloc_free(&allocator, b);
+  void *big = alloc_malloc(&allocator, 64);
+  if (big != a) {
+    printf("14. Backward coalesce failed (a=%p big=%p)\n", a, big);
+    alloc_deinit(&allocator);
+    return 1;
+  }
+  if (((unsigned char *)c)[0] != 0x77) {
+    printf("14. Coalescing corrupted the guard block\n");
+    alloc_deinit(&allocator);
+    return 1;
+  }
+  alloc_deinit(&allocator);
+  printf("Test 14 - Success\n");
+  return 0;
+}
+
+// Both sides at once: A and C free, then freeing B must merge all three.
+// Merged payload: 3*32 + 2*24 = 144.
+int test_15() {
+  Allocator allocator = {0};
+  alloc_init(&allocator, 4096);
+  void *a = alloc_malloc(&allocator, 32);
+  void *b = alloc_malloc(&allocator, 32);
+  void *c = alloc_malloc(&allocator, 32);
+  void *d = alloc_malloc(&allocator, 32); // guard
+  memset(d, 0x55, 32);
+  alloc_free(&allocator, a);
+  alloc_free(&allocator, c);
+  alloc_free(&allocator, b);
+  void *big = alloc_malloc(&allocator, 144);
+  if (big != a) {
+    printf("15. Two-sided coalesce failed (a=%p big=%p)\n", a, big);
+    alloc_deinit(&allocator);
+    return 1;
+  }
+  if (((unsigned char *)d)[0] != 0x55) {
+    printf("15. Coalescing corrupted the guard block\n");
+    alloc_deinit(&allocator);
+    return 1;
+  }
+  alloc_deinit(&allocator);
+  printf("Test 15 - Success\n");
+  return 0;
+}
+
+// Splitting: a small alloc from a big free block must leave the
+// remainder usable. Remainder of 256-block after 32: 256-32-24 = 200.
+int test_16() {
+  Allocator allocator = {0};
+  alloc_init(&allocator, 4096);
+  void *p = alloc_malloc(&allocator, 256);
+  void *guard = alloc_malloc(&allocator, 32);
+  memset(guard, 0x99, 32);
+  alloc_free(&allocator, p);
+
+  void *small = alloc_malloc(&allocator, 32);
+  if (small != p) {
+    printf("16. Split block not placed at freed address\n");
+    alloc_deinit(&allocator);
+    return 1;
+  }
+  // Remainder header starts at p + 32 + 8 (footer), payload 16 further.
+  void *rest = alloc_malloc(&allocator, 160);
+  if (rest != (char *)p + 32 + 3 * sizeof(size_t)) {
+    printf("16. Remainder after split not reused (p=%p rest=%p)\n", p, rest);
+    alloc_deinit(&allocator);
+    return 1;
+  }
+  memset(small, 0x11, 32);
+  memset(rest, 0x22, 160);
+  if (((unsigned char *)guard)[0] != 0x99) {
+    printf("16. Split corrupted the guard block\n");
+    alloc_deinit(&allocator);
+    return 1;
+  }
+  alloc_deinit(&allocator);
+  printf("Test 16 - Success\n");
+  return 0;
+}
+
+// README done-criterion: heap must not fragment into uselessness.
+// 9 blocks of 48, freed in scattered order, must merge back into one
+// block of 9*48 + 8*24 = 624 that a single big alloc can take.
+int test_17() {
+  Allocator allocator = {0};
+  alloc_init(&allocator, 4096);
+  void *p[9];
+  for (int i = 0; i < 9; i++)
+    p[i] = alloc_malloc(&allocator, 48);
+  for (int i = 0; i < 9; i += 2)
+    alloc_free(&allocator, p[i]);
+  for (int i = 1; i < 9; i += 2)
+    alloc_free(&allocator, p[i]);
+  void *big = alloc_malloc(&allocator, 624);
+  if (big != p[0]) {
+    printf("17. Heap fragmented: scattered frees did not merge "
+           "(p0=%p big=%p)\n",
+           p[0], big);
+    alloc_deinit(&allocator);
+    return 1;
+  }
+  alloc_deinit(&allocator);
+  printf("Test 17 - Success\n");
+  return 0;
+}
+
 int main() {
   int failures = 0;
   failures += test_1();
@@ -252,6 +397,11 @@ int main() {
   failures += test_10();
   failures += test_11();
   failures += test_12();
+  failures += test_13();
+  failures += test_14();
+  failures += test_15();
+  failures += test_16();
+  failures += test_17();
   if (failures != 0) {
     printf("%d test(s) FAILED\n", failures);
     return 1;
