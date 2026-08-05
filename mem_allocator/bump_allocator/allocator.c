@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <sys/mman.h>
 
-int alloc_init(Arena *arena, size_t size) {
+int alloc_init(Allocator *arena, size_t size) {
   if (arena->ptr != 0) {
     return 1; // Invalid if the memory is already initialized. Need
               // de-initialization
@@ -18,7 +18,7 @@ int alloc_init(Arena *arena, size_t size) {
   return 0;
 }
 
-int alloc_deinit(Arena *arena) {
+int alloc_deinit(Allocator *arena) {
   if (arena->ptr == 0) {
     return 1; // Cannot de-init if never initialized
   }
@@ -28,7 +28,7 @@ int alloc_deinit(Arena *arena) {
   return 0;
 }
 
-void *alloc_malloc(Arena *arena, size_t size) {
+void *alloc_malloc(Allocator *arena, size_t size) {
   if (arena->ptr == 0) {
     return 0; // Need initialized memory
   }
@@ -41,12 +41,12 @@ void *alloc_malloc(Arena *arena, size_t size) {
   return (void *)res;
 }
 
-int alloc_free(Arena *arena, void *ptr) {
+int alloc_free(Allocator *arena, void *ptr) {
   (void)arena;
   (void)ptr;
   return 0;
 }
-int alloc_reset(Arena *arena) {
+int alloc_reset(Allocator *arena) {
   if (arena->ptr == 0)
     return 1;
   arena->ptr = arena->buffer;

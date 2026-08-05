@@ -6,12 +6,12 @@ typedef struct {
   char *buffer;
   char *ptr;
   size_t buff_size;
-} Arena;
+} Allocator;
 
-int alloc_init(Arena *arena, size_t size);
-int alloc_deinit(Arena *arena);
-void *alloc_malloc(Arena *arena, size_t size);
-int alloc_free(Arena *arena, void *ptr);
-int alloc_reset(Arena *arena);
+int alloc_init(Allocator *arena, size_t size);
+int alloc_deinit(Allocator *arena);
+void *alloc_malloc(Allocator *arena, size_t size);
+int alloc_free(Allocator *arena, void *ptr);
+int alloc_reset(Allocator *arena);
 
 #endif
