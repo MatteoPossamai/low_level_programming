@@ -4,6 +4,13 @@
 
 #define ALIGN 16
 
+static void *HEAD = NULL;
+
+typedef struct {
+  void *prev;
+  void *next;
+} Pointers;
+
 typedef struct {
   size_t block_size;
   size_t allocated;
