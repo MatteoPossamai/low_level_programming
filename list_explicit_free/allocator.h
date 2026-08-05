@@ -4,8 +4,6 @@
 
 #define ALIGN 16
 
-static void *HEAD = NULL;
-
 typedef struct {
   void *prev;
   void *next;

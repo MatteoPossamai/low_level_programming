@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <sys/mman.h>
 
+static void *HEAD = NULL;
+
 int alloc_init(Allocator *allocator, size_t size) {
   if (allocator->start_ptr != 0) {
     return 1; // Invalid if the memory is already initialized. Need
@@ -23,6 +25,7 @@ int alloc_reset(Allocator *allocator) {
   if (allocator->start_ptr == 0)
     return 1;
   allocator->last_ptr = allocator->start_ptr;
+  HEAD = NULL;
   return 0;
 }
 
@@ -34,6 +37,7 @@ int alloc_deinit(Allocator *allocator) {
   allocator->start_ptr = 0;
   allocator->last_ptr = 0;
   allocator->size = 0;
+  HEAD = NULL;
   return 0;
 }
 
@@ -48,14 +52,13 @@ void *alloc_malloc(Allocator *allocator, size_t size) {
       if (header->block_size >= size) {
         found = 1;
       } else {
-        // Go to next
-        *(size_t *)current = *(size_t *)(current + 3 * sizeof(size_t));
+        current = *(void **)(current + 3 * sizeof(size_t));
       }
     } while (current != HEAD && found == 0);
 
     if (found != 0) {
-      void *prev = current + 2 * sizeof(size_t);
-      void *next = current + 3 * sizeof(size_t);
+      void *prev = *(void **)(current + 2 * sizeof(size_t));
+      void *next = *(void **)(current + 3 * sizeof(size_t));
       header = (Header *)current;
 
       header->allocated = 1;
@@ -70,17 +73,26 @@ void *alloc_malloc(Allocator *allocator, size_t size) {
         new_header->block_size = original_size - size - 3 * sizeof(size_t);
         *(size_t *)(other_chunk + new_header->block_size + 2 * sizeof(size_t)) =
             new_header->block_size;
-        void *n_prev = other_chunk + 2 * sizeof(size_t);
-        void *n_next = other_chunk + 3 * sizeof(size_t);
-        *(size_t *)n_prev = *(size_t *)prev;
-        *(size_t *)n_next = *(size_t *)next;
-      } else if (*(size_t *)prev == *(size_t *)next) {
+
+        // Remainder takes the old node's place in the list
+        if (next == current) { // was the only node: link to itself
+          *(void **)(other_chunk + 2 * sizeof(size_t)) = other_chunk;
+          *(void **)(other_chunk + 3 * sizeof(size_t)) = other_chunk;
+        } else { // neighbors must point at the remainder, not the old header
+          *(void **)(other_chunk + 2 * sizeof(size_t)) = prev;
+          *(void **)(other_chunk + 3 * sizeof(size_t)) = next;
+          *(void **)(prev + 3 * sizeof(size_t)) = other_chunk;
+          *(void **)(next + 2 * sizeof(size_t)) = other_chunk;
+        }
+        if (HEAD == current)
+          HEAD = other_chunk;
+      } else if (next == current) { // whole block taken, was the only node
         HEAD = NULL;
       } else {
-        size_t *prev_block_next = *(size_t **)prev;
-        size_t *next_block_prev = *(size_t **)next;
-        *prev_block_next = *(size_t *)next;
-        *next_block_prev = *(size_t *)prev;
+        *(void **)(prev + 3 * sizeof(size_t)) = next; // prev block's next
+        *(void **)(next + 2 * sizeof(size_t)) = prev; // next block's prev
+        if (HEAD == current)
+          HEAD = next;
       }
       return current + 2 * sizeof(size_t);
     }
