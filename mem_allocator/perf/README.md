@@ -7,11 +7,12 @@ allocator.
 
 ## TLDR profiling sequence
 
-1. Write the code to proifile and a profiler benchmark code (make sure is not skewed)
+1. Write the code to profile and a profiler benchmark code (make sure is not skewed)
 2. Run Simple perf stat to have an idea. Repeat more specific metrics
 
 ```shell
- gcc -O2 perf/perf_binary.c implicit_free_list/allocator.c && sudo perf stat ./a.out
+gcc -O2 -g -fno-omit-frame-pointer perf/perf_binary.c implicit_free_list/allocator.c
+sudo perf stat ./a.out
 ```
 
 3. Dive deeper into cases that seems the event that is limiting execution, get ASM
@@ -19,7 +20,9 @@ allocator.
 ```shell
 [1] sudo perf record -e cycles -g ./a.out
 [2] sudo perf record -e cache-misses -g ./a.out
+[2.1] sudo perf record -e cache-misses:pp ./a.out    # precise sampling
 [3] sudo perf report [--stdio]
+[4] sudo perf annotate --stdio FUNC_NAME
 ```
 
 4. Read ASM and compare with the code to find the problematic cluster
@@ -27,6 +30,14 @@ allocator.
 6. Optimize it (change code or change data structure when required)
 7. Benchmark to verify improvement
 8. Repeat until not happy
+
+### Paranoid issue setup
+
+```shell
+# If perf says "not supported" on hardware events:
+cat /proc/sys/kernel/perf_event_paranoid    # check
+sudo sysctl kernel.perf_event_paranoid=1    # temp fix
+```
 
 ## Command
 
@@ -49,7 +60,7 @@ sudo perf stat -e cycles,instructions,cache-references,cache-misses,L1-dcache-lo
 ```
 
 With the above `[1]` and `[2]` (`[3]` to visualize output) we figured out that
-`alloc_malloc` wascausing the vast majority of all the cache misses, and so we
+`alloc_malloc` was causing the vast majority of all the cache misses, and so we
 went down to read the ASM and find bottlenecks with the last one.
 
 From the assembly we were able to trace down which functions were the one where
@@ -58,10 +69,27 @@ main thing is cache misses anyway.
 
 ## Metrics to compute
 
-1. IPC: Compute instructions / cycles. High (3+) = compute-busy. Low (<1) = waiting
-2. Topdown: backend_bound high = memory or execution unit stalls. frontend_bound high = instruction fetch stalls.
-3. Cache ratios: L1 for first level, LLC if you are leaving cache for DRAM
-4. Absolute counts for OS-level things. Page faults, context switches, TLB misses
+```shell
+Ratios to compute from perf stat output:
+  IPC              = instructions / cycles
+  L1 miss rate     = L1-dcache-load-misses / L1-dcache-loads
+  LLC miss rate    = cache-misses / cache-references
+  Branch miss rate = branch-misses / branches
+  dTLB miss rate   = dTLB-load-misses / dTLB-loads
+
+Rough thresholds:
+  IPC:              <1 stalled, 1-2 normal, 2-4 good, 4+ excellent
+  L1 miss rate:     <1% excellent, 1-5% normal, 5-15% notable, >15% memory-bound
+  LLC miss rate:    <1% good, 1-5% notable, >5% DRAM-bound
+  Branch miss rate: <1% good, 1-3% normal, >5% investigate
+  dTLB miss rate:   <0.01% normal, >0.1% investigate huge pages
+```
+
+1. Topdown:
+  backend_bound high = memory or execution unit stalls.
+  frontend_bound high = instruction fetch stalls.
+2. Cache ratios: L1 for first level, LLC if you are leaving cache for DRAM
+3. Absolute counts for OS-level things. Page faults, context switches, TLB misses
 
 ## Compiler arguments
 
