@@ -10,6 +10,7 @@ echo "# Benchmark" >"$README"
 for entry in \
   "Bump allocator:bump_allocator" \
   "Implicit free list:implicit_free_list" \
+  "Implicit free list IMPROVED:implicit_free_list-improved" \
   "Implicit free list + coalesce:implicit_free_list_coalasce" \
   "Explicit free list:list_explicit_free"; do
   name="${entry%%:*}"
