@@ -5,6 +5,29 @@
 Using `perf`, find one optimization to apply to the `implicit_free_list`
 allocator.
 
+## TLDR profiling sequence
+
+1. Write the code to proifile and a profiler benchmark code (make sure is not skewed)
+2. Run Simple perf stat to have an idea. Repeat more specific metrics
+
+```shell
+ gcc -O2 perf/perf_binary.c implicit_free_list/allocator.c && sudo perf stat ./a.out
+```
+
+3. Dive deeper into cases that seems the event that is limiting execution, get ASM
+
+```shell
+[1] sudo perf record -e cycles -g ./a.out
+[2] sudo perf record -e cache-misses -g ./a.out
+[3] sudo perf report [--stdio]
+```
+
+4. Read ASM and compare with the code to find the problematic cluster
+5. Try to understand the bottleneck of the cluster and why happens
+6. Optimize it (change code or change data structure when required)
+7. Benchmark to verify improvement
+8. Repeat until not happy
+
 ## Command
 
 ### Build and see in UI
@@ -12,20 +35,26 @@ allocator.
 ```shell
 gcc -O2 perf/perf_binary.c implicit_free_list/allocator.c && sudo perf stat ./a.out
 
-gcc -O2 perf/perf_binary.c implicit_free_list/allocator.c && sudo perf stat -e cycles,instructions,cache-references,cache-misses,L1-dcache-loads,L1-dcache-load-misses,dTLB-loads,dTLB-load-misses,page-faults,branch-misses ./a.out
+gcc -O2 perf/perf_binary.c implicit_free_list/allocator.c
+sudo perf stat -e cycles,instructions,cache-references,cache-misses,L1-dcache-loads,L1-dcache-load-misses,dTLB-loads,dTLB-load-misses,page-faults,branch-misses ./a.out
 ```
 
 ### Record
 
 ```shell
-sudo perf record -e cycles -g ./a.out
-sudo perf report
-
-sudo perf record -e cache-misses -g ./a.out
-sudo perf report
-
-sudo perf annotate --stdio alloc_malloc # ASM for a specific function
+[1] sudo perf record -e cycles -g ./a.out
+[2] sudo perf record -e cache-misses -g ./a.out
+[3] sudo perf report [--stdio]
+[4] sudo perf annotate --stdio alloc_malloc # ASM for a specific function
 ```
+
+With the above `[1]` and `[2]` (`[3]` to visualize output) we figured out that
+`alloc_malloc` wascausing the vast majority of all the cache misses, and so we
+went down to read the ASM and find bottlenecks with the last one.
+
+From the assembly we were able to trace down which functions were the one where
+the CPU stall more of the time due to the events we were looking into. Usually the
+main thing is cache misses anyway.
 
 ## Metrics to compute
 
@@ -36,10 +65,10 @@ sudo perf annotate --stdio alloc_malloc # ASM for a specific function
 
 ## Compiler arguments
 
-- %rdi — first arg
-- %rsi — second arg
-- %rdx — third arg
-- %rcx, %r8, %r9 — fourth through sixth
+- `%rdi` — first argument
+- `%rsi` — second argument
+- `%rdx` — third argument
+- `%rcx`, `%r8`, `%r9` — ...
 
 ## ASM
 
