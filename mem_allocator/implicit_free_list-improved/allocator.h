@@ -5,13 +5,9 @@
 #define ALIGN 16
 
 typedef struct {
-  size_t block_size;
-  size_t allocated;
-} Header;
-
-typedef struct {
-  void *start_ptr;
-  void *last_ptr;
+  void *meta_start_ptr;
+  void *meta_last_ptr;
+  void *data_start_ptr;
   size_t size;
 } Allocator;
 

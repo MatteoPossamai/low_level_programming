@@ -60,7 +60,7 @@ int test_5() {
   int *val1 = (int *)alloc_malloc(&allocator, sizeof(int));
 
   if (val1 != 0) {
-    printf("5. Should not initialize over dimension of buffer");
+    printf("5. Should not initialize over dimension of buffer\n");
     return 1;
   }
 
@@ -143,12 +143,12 @@ int test_9() {
   Allocator allocator = {0};
   alloc_init(&allocator, 4096);
   alloc_malloc(&allocator, 16);
-  if (alloc_free(&allocator, allocator.start_ptr) != 1) {
+  if (alloc_free(&allocator, allocator.meta_start_ptr) != 1) {
     printf("9. Free of start_ptr (no header before it) accepted\n");
     alloc_deinit(&allocator);
     return 1;
   }
-  if (alloc_free(&allocator, (char *)allocator.start_ptr + 4096 + 64) != 1) {
+  if (alloc_free(&allocator, (char *)allocator.meta_start_ptr + 4096 + 64) != 1) {
     printf("9. Free past end of region accepted\n");
     alloc_deinit(&allocator);
     return 1;
