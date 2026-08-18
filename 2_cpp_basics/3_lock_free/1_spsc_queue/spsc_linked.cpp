@@ -29,26 +29,33 @@ public:
   }
 
   std::shared_ptr<int> deque() {
-    auto h = head.load();
-    if (h == tail.load()) {
+    // relaxed: only the consumer ever writes head
+    auto h = head.load(std::memory_order_relaxed);
+    // acquire: pairs with the producer's release store of tail, so h->data
+    // and h->next are fully written before we touch them
+    if (h == tail.load(std::memory_order_acquire)) {
       return nullptr;
     }
     auto res = std::move(h->data);
     auto nxt = h->next;
     h->next = nullptr;
-    head.store(nxt);
+    // relaxed: the producer never reads head in this design, so nothing to
+    // synchronize with
+    head.store(nxt, std::memory_order_relaxed);
     delete h;
     return res;
   }
 
   void enqueue(T data) {
     std::shared_ptr<T> ptr = std::make_shared<T>(std::move(data));
-    node *t = tail.load();
+    // relaxed: only the producer ever writes tail
+    node *t = tail.load(std::memory_order_relaxed);
     auto new_node = new node;
     t->data = ptr;
     t->next = new_node;
-    tail.store(t);
-    tail.store(new_node);
+    // release: publishes t->data and t->next before the consumer can see the
+    // new tail
+    tail.store(new_node, std::memory_order_release);
   }
 };
 

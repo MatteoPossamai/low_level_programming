@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 ITER="${ITER:-10000000}"
+OUT="${OUT:-RESULTS.md}"
 RUNS="${RUNS:-10}"
 CXX="${CXX:-g++}"
 FLAGS="-O2 -std=c++17 -pthread -DITER=${ITER}"
@@ -45,7 +46,7 @@ CPU=$(lscpu | awk -F': +' '/Model name/ { print $2; exit }')
 CORES=$(nproc)
 CXX_VER=$("$CXX" --version | head -1)
 
-cat >RESULTS.md <<EOF
+cat >"$OUT" <<EOF
 # SPSC queue benchmark results
 
 - Date: $(date +%F)
@@ -64,4 +65,4 @@ Reproduce: \`./bench.sh\` (override with e.g. \`ITER=1000000 RUNS=5 ./bench.sh\`
 EOF
 
 rm -f bench_spsc_ring bench_spsc_linked bench_spsc_lock
-echo "Done. Results in RESULTS.md"
+echo "Done. Results in $OUT"
