@@ -2,7 +2,9 @@
 #include <cassert>
 #include <memory>
 #include <thread>
+#ifndef ITER
 #define ITER 1000
+#endif
 
 template <typename T, int S> class spsc_queue {
   T *data;

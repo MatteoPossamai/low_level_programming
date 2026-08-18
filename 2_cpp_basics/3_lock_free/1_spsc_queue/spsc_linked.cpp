@@ -3,7 +3,9 @@
 #include <memory>
 #include <thread>
 
+#ifndef ITER
 #define ITER 1000
+#endif
 
 template <typename T> class spsc_queue {
 
