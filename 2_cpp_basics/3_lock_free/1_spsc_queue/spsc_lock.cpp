@@ -1,46 +1,41 @@
-#include <atomic>
 #include <cassert>
 #include <memory>
+#include <mutex>
+#include <queue>
 #include <thread>
 #define ITER 1000
 
-template <typename T, int S> class spsc_queue {
-  T *data;
-  std::atomic<size_t> head, tail;
+template <typename T> class spsc_queue {
+  std::queue<T> queue;
+  std::mutex mutex;
 
 public:
-  spsc_queue() : data(new T[S]), head(0), tail(0) {};
+  spsc_queue() = default;
   spsc_queue(const spsc_queue &other) = delete;
   spsc_queue &operator=(const spsc_queue &other) = delete;
-  ~spsc_queue() { delete[] data; }
+  ~spsc_queue() = default;
 
-  bool enqueue(T value) {
-    size_t t = tail.load();
-    if ((t + 1) % S == head.load()) {
-      return false;
-    }
-    data[t] = std::move(value);
-    tail.store((t + 1) % S);
-    return true;
+  void enqueue(T value) {
+    std::lock_guard<std::mutex> lk(mutex);
+    queue.push(value);
   }
 
   std::shared_ptr<T> deque() {
-    size_t curr = head.load();
-    if (curr == tail.load()) {
+    std::lock_guard<std::mutex> lk(mutex);
+    if (queue.size() == 0) {
       return nullptr;
     }
-    auto res = std::make_shared<T>(std::move(data[curr]));
-    head.store((curr + 1) % S);
+    auto res = std::make_shared<T>(queue.front());
+    queue.pop();
     return res;
   }
 };
 
-auto queue = spsc_queue<int, 1000>();
+auto queue = spsc_queue<int>();
 
 void producer() {
   for (int i = 0; i < ITER; i++) {
-    while (!queue.enqueue(i)) {
-    }
+    queue.enqueue(i);
   }
 }
 
