@@ -16,8 +16,6 @@
 // misses. This makes the prediction made above over optimistic. Not direct
 // way to measure those. Too little, and the chronometer could just take it
 // over. Need to sink result to avoid compiler optimization.
-//
-//
 
 #include <algorithm>
 #include <benchmark/benchmark.h>
