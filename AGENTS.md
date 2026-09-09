@@ -22,9 +22,14 @@ A self-directed systems programming curriculum, organised in quarters. Each quar
 - Benchmarked the MPMC queue, including the effects of cache-line padding and weaker atomic memory orderings, and documented its sequence-number protocol and memory-model reasoning
 - Key mental models acquired: RAII/ownership, move semantics, the C++ memory model, acquire/release semantics, atomics, sequence-number-based slot ownership, false sharing and cache-line contention, cooperative cancellation, futures/promises, task scheduling, and work stealing
 
-**Q3 — Starting**
+**Q3 — The machine below (complete)**
 
-- Part 3 of the curriculum is now beginning; its book and project details will be recorded here as they are chosen
+- Books: _The Art of Writing Efficient Programs_ (Fedor Pikus), _Effective Modern C++_ (Scott Meyers)
+- Built (all in `3_machine_below/`):
+  - **Performance atlas** — six Google Benchmark experiments isolating hardware effects: branch misprediction (sorted vs unsorted), `cmov` vs branch, multiple accumulators / ILP, stride vs cache-line utilisation, false sharing, `__builtin_prefetch`
+  - **Compiler atlas** — six experiments isolating compiler decisions, each with annotated inner-loop asm: inlining as vectorisation enabler, signed-overflow UB as an optimisation contract (`-fwrapv` diff), auto-vectoriser preconditions (`__restrict__`, calls in loop), missing `noexcept` on move ctor forcing vector realloc copies, virtual vs `final` devirtualisation vs CRTP, Itanium zero-cost exception model
+  - **Event poll** — two small C++20 echo servers: epoll (readiness-based, level-triggered) and io_uring (completion-based, SQE/CQE rings, per-operation request state via `user_data`)
+- Key mental models acquired: readiness vs completion I/O models, syscall batching, why the real cost of virtual dispatch is missed inlining, UB as the price of optimisation, what makes the auto-vectoriser fire or bail, exception happy-path vs thrown-path asymmetry, and (from Meyers) modern C++ idiom — `auto`, move semantics pitfalls, `noexcept`, smart-pointer ownership, perfect forwarding
 
 ## Direction from here
 
