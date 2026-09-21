@@ -1,7 +1,5 @@
 #include "list_str.hpp"
 
-// Destructor: walks each list and deletes every node. Boilerplate RAII; the
-// algorithm methods below are stubs for you to fill in.
 OrderBook_List::~OrderBook_List() {
   while (buy_head) {
     BuyBlock *nxt = buy_head->next;
@@ -15,16 +13,165 @@ OrderBook_List::~OrderBook_List() {
   }
 }
 
-// Stubs so the target links. Benchmark numbers for OrderBook_List are
-// meaningless until these are implemented.
+uint64_t OrderBook_List::insert_buy_order(BuyOrder order) {
+  order.id = ++counter;
 
-uint64_t OrderBook_List::insert_buy_order(BuyOrder) { return 0; }
-uint64_t OrderBook_List::insert_sell_order(SellOrder) { return 0; }
-uint64_t OrderBook_List::cancel_buy_order(uint64_t) { return 0; }
-uint64_t OrderBook_List::cancel_sell_order(uint64_t) { return 0; }
-uint64_t OrderBook_List::market_buy_order(BuyOrder) { return 0; }
-uint64_t OrderBook_List::market_sell_order(SellOrder) { return 0; }
+  BuyBlock *node = new BuyBlock();
+  node->order = order;
 
-std::pair<BuyOrder, SellOrder> OrderBook_List::top_of_book() { return {}; }
+  BuyBlock *cur = buy_head;
+  while (cur && cur->order > order)
+    cur = cur->next;
 
-bool OrderBook_List::match() { return false; }
+  if (cur) {
+    node->next = cur;
+    node->prev = cur->prev;
+    if (cur->prev)
+      cur->prev->next = node;
+    else
+      buy_head = node;
+    cur->prev = node;
+  } else {
+    node->prev = buy_tail;
+    node->next = nullptr;
+    if (buy_tail)
+      buy_tail->next = node;
+    else
+      buy_head = node;
+    buy_tail = node;
+  }
+
+  buy_index[order.id] = node;
+  match();
+  return order.id;
+}
+
+uint64_t OrderBook_List::insert_sell_order(SellOrder order) {
+  order.id = ++counter;
+
+  SellBlock *node = new SellBlock();
+  node->order = order;
+
+  SellBlock *cur = sell_head;
+  while (cur && cur->order > order)
+    cur = cur->next;
+
+  if (cur) {
+    node->next = cur;
+    node->prev = cur->prev;
+    if (cur->prev)
+      cur->prev->next = node;
+    else
+      sell_head = node;
+    cur->prev = node;
+  } else {
+    node->prev = sell_tail;
+    node->next = nullptr;
+    if (sell_tail)
+      sell_tail->next = node;
+    else
+      sell_head = node;
+    sell_tail = node;
+  }
+
+  sell_index[order.id] = node;
+  match();
+  return order.id;
+}
+
+void OrderBook_List::unlink(BuyBlock *n) {
+  if (n->prev)
+    n->prev->next = n->next;
+  else
+    buy_head = n->next;
+  if (n->next)
+    n->next->prev = n->prev;
+  else
+    buy_tail = n->prev;
+  n->next = nullptr;
+  n->prev = nullptr;
+}
+
+void OrderBook_List::unlink(SellBlock *n) {
+  if (n->prev)
+    n->prev->next = n->next;
+  else
+    sell_head = n->next;
+  if (n->next)
+    n->next->prev = n->prev;
+  else
+    sell_tail = n->prev;
+  n->next = nullptr;
+  n->prev = nullptr;
+}
+
+uint64_t OrderBook_List::cancel_buy_order(uint64_t id) {
+  auto it = buy_index.find(id);
+  if (it == buy_index.end())
+    return 0;
+  BuyBlock *n = it->second;
+  unlink(n);
+  buy_index.erase(it);
+  delete n;
+  return id;
+}
+
+uint64_t OrderBook_List::cancel_sell_order(uint64_t id) {
+  auto it = sell_index.find(id);
+  if (it == sell_index.end())
+    return 0;
+  SellBlock *n = it->second;
+  unlink(n);
+  sell_index.erase(it);
+  delete n;
+  return id;
+}
+
+uint64_t OrderBook_List::market_buy_order(BuyOrder order) {
+  if (sell_head) {
+    SellBlock *n = sell_head;
+    uint64_t id = n->order.id;
+    unlink(n);
+    sell_index.erase(id);
+    delete n;
+    return id;
+  }
+  order.price = UINT64_MAX;
+  return insert_buy_order(order);
+}
+
+uint64_t OrderBook_List::market_sell_order(SellOrder order) {
+  if (buy_head) {
+    BuyBlock *n = buy_head;
+    uint64_t id = n->order.id;
+    unlink(n);
+    buy_index.erase(id);
+    delete n;
+    return id;
+  }
+  order.price = 0;
+  return insert_sell_order(order);
+}
+
+std::pair<BuyOrder, SellOrder> OrderBook_List::top_of_book() {
+  BuyOrder b = buy_head ? buy_head->order : BuyOrder();
+  SellOrder s = sell_head ? sell_head->order : SellOrder();
+  return {b, s};
+}
+
+bool OrderBook_List::match() {
+  bool did = false;
+  while (buy_head && sell_head &&
+         buy_head->order.price >= sell_head->order.price) {
+    BuyBlock *b = buy_head;
+    SellBlock *s = sell_head;
+    unlink(b);
+    unlink(s);
+    buy_index.erase(b->order.id);
+    sell_index.erase(s->order.id);
+    delete b;
+    delete s;
+    did = true;
+  }
+  return did;
+}

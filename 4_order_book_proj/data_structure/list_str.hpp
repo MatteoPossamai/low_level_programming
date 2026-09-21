@@ -1,10 +1,7 @@
 #pragma once
 
 #include "base.hpp"
-
-// Intrusive doubly-linked list nodes. The book owns every allocated node and
-// frees them in its destructor. No shared_ptr / weak_ptr overhead. next/prev
-// are non-owning; the head/tail pair in OrderBook_List is the sole owner.
+#include <unordered_map>
 
 class BuyBlock {
 public:
@@ -28,13 +25,18 @@ class OrderBook_List final : public OrderBook {
   SellBlock *sell_head = nullptr;
   SellBlock *sell_tail = nullptr;
 
+  std::unordered_map<uint64_t, BuyBlock *> buy_index;
+  std::unordered_map<uint64_t, SellBlock *> sell_index;
+
   bool match();
+
+  void unlink(BuyBlock *n);
+  void unlink(SellBlock *n);
 
 public:
   OrderBook_List() = default;
   ~OrderBook_List() override;
 
-  // Raw ownership => no default copy semantics.
   OrderBook_List(const OrderBook_List &) = delete;
   OrderBook_List &operator=(const OrderBook_List &) = delete;
 

@@ -44,8 +44,10 @@ keep some reference to given orders if they were to be cancelled. That might
 be a bit more tricky, but sorting a vector with only one tick prize might be
 less work instead.
 
-Big downside is that for instruments that are up to 10k it would need 1M entries,
-that are quite a bit of memory. For the sake of this experiment, we will assume
-that max prize is 1K.
+Each level is a linked list, so adding and removing is constant.
 
-To test to verify if the hypothesis hold.
+## TODO: pool allocator
+
+Both linked list and sparse array use `new`/`delete` per node. Swap in a slab
+pool later for both. Rerun benchmarks to isolate allocator cost from
+structure cost.
