@@ -73,3 +73,17 @@ public:
 
   virtual std::pair<BuyOrder, SellOrder> top_of_book() = 0;
 };
+
+class BuyBlock {
+public:
+  BuyOrder order;
+  BuyBlock *next = nullptr;
+  BuyBlock *prev = nullptr;
+};
+
+class SellBlock {
+public:
+  SellOrder order;
+  SellBlock *next = nullptr;
+  SellBlock *prev = nullptr;
+};

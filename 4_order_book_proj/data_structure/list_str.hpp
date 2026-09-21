@@ -3,20 +3,6 @@
 #include "base.hpp"
 #include <unordered_map>
 
-class BuyBlock {
-public:
-  BuyOrder order;
-  BuyBlock *next = nullptr;
-  BuyBlock *prev = nullptr;
-};
-
-class SellBlock {
-public:
-  SellOrder order;
-  SellBlock *next = nullptr;
-  SellBlock *prev = nullptr;
-};
-
 class OrderBook_List final : public OrderBook {
   uint64_t counter = 1; // 0 reserved as the failed operation
 
