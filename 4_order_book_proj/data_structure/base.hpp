@@ -9,7 +9,7 @@ class BuyOrder {
 public:
   uint64_t id = 0;
   uint64_t price = 0;
-  uint64_t size = 0;
+  uint32_t size = 0;
 
   bool operator>(const BuyOrder &o2) const {
     if (price > o2.price)
@@ -34,7 +34,7 @@ class SellOrder {
 public:
   uint64_t id = 0;
   uint64_t price = 0;
-  uint64_t size = 0;
+  uint32_t size = 0;
 
   bool operator>(const SellOrder &o2) const {
 

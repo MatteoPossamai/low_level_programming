@@ -46,3 +46,20 @@ target_link_libraries(bench_order_book PRIVATE
 target_compile_options(bench_order_book PRIVATE
     -O2 -g -Wall -Wextra -Wshadow
 )
+
+add_library(protocol_codec STATIC
+    protocol/message.cpp
+)
+target_include_directories(protocol_codec PUBLIC protocol)
+target_compile_options(protocol_codec PRIVATE
+    -O2 -g -Wall -Wextra -Wshadow
+)
+
+add_executable(bench_codec benchmark/codec_bench.cpp)
+target_link_libraries(bench_codec PRIVATE
+    protocol_codec
+    benchmark::benchmark
+)
+target_compile_options(bench_codec PRIVATE
+    -O2 -g -Wall -Wextra -Wshadow
+)
