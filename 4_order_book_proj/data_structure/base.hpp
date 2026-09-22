@@ -7,9 +7,9 @@ enum class OrderType { LIMIT, MARKET };
 
 class BuyOrder {
 public:
-  uint64_t id;
-  uint64_t price;
-  uint64_t size;
+  uint64_t id = 0;
+  uint64_t price = 0;
+  uint64_t size = 0;
 
   bool operator>(const BuyOrder &o2) const {
     if (price > o2.price)
@@ -32,9 +32,9 @@ public:
 
 class SellOrder {
 public:
-  uint64_t id;
-  uint64_t price;
-  uint64_t size;
+  uint64_t id = 0;
+  uint64_t price = 0;
+  uint64_t size = 0;
 
   bool operator>(const SellOrder &o2) const {
 
