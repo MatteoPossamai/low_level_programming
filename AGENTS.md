@@ -59,9 +59,11 @@ Rules learned over months. Follow them.
 
 ## Current position — Q4: matching engine
 
-Just starting. Full plan lives in Notion. Block summary:
+Block 1 MVP complete; not yet extended with pool allocator. Full plan lives in Notion. Block summary:
 
 - **Block 1** — Price-level data structure chosen by measurement (map vs sorted vector vs flat array vs intrusive lists, pool allocator underneath). Atlas method. Read WK Selph's order book post ONLY after forming own hypothesis.
+  - **Status**: three structures implemented (`sorted_vector`, intrusive `list`, `tick_offset` sparse array), one shared Google-Benchmark workload harness. Winner by measurement at real-book scales: **tick_offset**. Full write-up + numbers in [`4_order_book_proj/DATA_STRUCTURE.md`](4_order_book_proj/DATA_STRUCTURE.md). Project layout, conventions, open items in [`4_order_book_proj/README.md`](4_order_book_proj/README.md).
+  - **Not done**: pool allocator swap-in, flat vector index replacing `unordered_map` for cancel, bitset for best-idx walk in tick_offset, small correctness driver, op-mix parametrisation.
 - **Block 2** — NASDAQ OUCH 5.0 codec (spec on nasdaqtrader.com), zero-copy, fuzzed, round-trip tested. FIX 4.2 parser is a STRETCH ONLY (text-vs-binary comparison artifact); must not eat the quarter.
 - **Block 3** — Design doc first, then matching core: price-time priority, limit/market/cancel. Modify = stretch. Self-trade prevention = out of scope. Deterministic replay input, invariant/property tests.
 - **Block 4** — Transport interface FIRST (~3 functions), then epoll backend, then io_uring backend, swappable, benchmarked head-to-head. Engine consumes via his Q2 SPSC queue. Expect epoll ≈ io_uring on loopback; explaining why is the finding.

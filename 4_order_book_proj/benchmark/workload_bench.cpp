@@ -15,6 +15,7 @@
 
 #include "list_str.hpp"
 #include "sorted_vector_str.hpp"
+#include "tick_offset_str.hpp"
 
 #include <benchmark/benchmark.h>
 #include <cstdint>
@@ -171,6 +172,12 @@ BENCHMARK_TEMPLATE(BM_Workload, OrderBook_SortedVector)
     ->Args({50000, 1000});
 
 BENCHMARK_TEMPLATE(BM_Workload, OrderBook_List)
+    ->Args({100, 10000})
+    ->Args({1000, 10000})
+    ->Args({10000, 5000})
+    ->Args({50000, 1000});
+
+BENCHMARK_TEMPLATE(BM_Workload, OrderBook_TickOffset<1024>)
     ->Args({100, 10000})
     ->Args({1000, 10000})
     ->Args({10000, 5000})

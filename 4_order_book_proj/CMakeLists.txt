@@ -28,10 +28,19 @@ target_compile_options(list_book PRIVATE
     -O2 -g -Wall -Wextra -Wshadow
 )
 
+add_library(tick_offset_book STATIC
+    data_structure/tick_offset_str.cpp
+)
+target_include_directories(tick_offset_book PUBLIC data_structure)
+target_compile_options(tick_offset_book PRIVATE
+    -O2 -g -Wall -Wextra -Wshadow
+)
+
 add_executable(bench_order_book benchmark/workload_bench.cpp)
 target_link_libraries(bench_order_book PRIVATE
     sorted_vector_book
     list_book
+    tick_offset_book
     benchmark::benchmark
 )
 target_compile_options(bench_order_book PRIVATE

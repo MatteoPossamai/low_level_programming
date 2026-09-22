@@ -22,10 +22,17 @@ template <int Size> class OrderBook_TickOffset : public OrderBook {
   std::array<BuyList *, Size> buy_buffer{};
   std::array<SellList *, Size> sell_buffer{};
   uint64_t best_buy_idx = 0;
-  uint64_t best_sell_idx = 0;
+  uint64_t best_sell_idx = Size;
   bool match();
+  void unlink(BuyBlock *n);
+  void unlink(SellBlock *n);
 
 public:
+  OrderBook_TickOffset() = default;
+  ~OrderBook_TickOffset() override;
+  OrderBook_TickOffset(const OrderBook_TickOffset &) = delete;
+  OrderBook_TickOffset &operator=(const OrderBook_TickOffset &) = delete;
+
   uint64_t insert_buy_order(BuyOrder) override;
   uint64_t insert_sell_order(SellOrder) override;
   uint64_t cancel_buy_order(uint64_t) override;
