@@ -1,18 +1,29 @@
 #pragma once
 
 #include "base.hpp"
+#include <array>
 #include <cstdint>
 #include <unordered_map>
 
 template <int Size> class OrderBook_TickOffset : public OrderBook {
+  struct BuyList {
+    BuyBlock *head;
+    BuyBlock *tail;
+  };
+  struct SellList {
+    SellBlock *head;
+    SellBlock *tail;
+  };
+
   uint64_t counter = 1; // 0 reserved as the failed operation
   std::unordered_map<uint64_t, BuyBlock *> buy_keys;
   std::unordered_map<uint64_t, SellBlock *> sell_keys;
 
-  std::array<BuyOrder *, Size> buy_buffer;
-  std::array<SellOrder *, Size> sell_buffer;
-  uint64_t best_buy_idx;
-  uint64_t best_sell_idx;
+  std::array<BuyList *, Size> buy_buffer{};
+  std::array<SellList *, Size> sell_buffer{};
+  uint64_t best_buy_idx = 0;
+  uint64_t best_sell_idx = 0;
+  bool match();
 
 public:
   uint64_t insert_buy_order(BuyOrder) override;
