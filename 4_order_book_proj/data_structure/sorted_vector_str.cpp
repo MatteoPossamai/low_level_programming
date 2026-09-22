@@ -37,33 +37,62 @@ uint64_t OrderBook_SortedVector::cancel_sell_order(uint64_t id) {
 }
 
 uint64_t OrderBook_SortedVector::market_buy_order(BuyOrder order) {
-  if (sell_book.size() > 0) {
-    auto res = sell_book.back();
-    sell_book.pop_back();
-    return res.id;
-  } else {
+  uint64_t remaining = order.size;
+  uint64_t last_id = 0;
+  while (remaining > 0 && !sell_book.empty()) {
+    SellOrder &best = sell_book.back();
+    last_id = best.id;
+    if (best.size <= remaining) {
+      remaining -= best.size;
+      sell_book.pop_back();
+    } else {
+      best.size -= remaining;
+      remaining = 0;
+    }
+  }
+  if (last_id == 0) {
     order.price = UINT64_MAX;
     return insert_buy_order(order);
   }
+  return last_id;
 }
 
 uint64_t OrderBook_SortedVector::market_sell_order(SellOrder order) {
-  if (buy_book.size() > 0) {
-    auto res = buy_book.back();
-    buy_book.pop_back();
-    return res.id;
-  } else {
+  uint64_t remaining = order.size;
+  uint64_t last_id = 0;
+  while (remaining > 0 && !buy_book.empty()) {
+    BuyOrder &best = buy_book.back();
+    last_id = best.id;
+    if (best.size <= remaining) {
+      remaining -= best.size;
+      buy_book.pop_back();
+    } else {
+      best.size -= remaining;
+      remaining = 0;
+    }
+  }
+  if (last_id == 0) {
     order.price = 0;
     return insert_sell_order(order);
   }
+  return last_id;
 }
 
 bool OrderBook_SortedVector::match() {
   bool res = false;
   while (!buy_book.empty() && !sell_book.empty() &&
          buy_book.back().price >= sell_book.back().price) {
-    buy_book.pop_back();
-    sell_book.pop_back();
+    BuyOrder &b = buy_book.back();
+    SellOrder &s = sell_book.back();
+    uint64_t fill = std::min(b.size, s.size);
+    b.size -= fill;
+    s.size -= fill;
+    bool pop_b = b.size == 0;
+    bool pop_s = s.size == 0;
+    if (pop_b)
+      buy_book.pop_back();
+    if (pop_s)
+      sell_book.pop_back();
     res = true;
   }
   return res;

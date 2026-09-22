@@ -1,4 +1,6 @@
 #include "list_str.hpp"
+#include <algorithm>
+#include <cstdint>
 
 OrderBook_List::~OrderBook_List() {
   while (buy_head) {
@@ -128,29 +130,49 @@ uint64_t OrderBook_List::cancel_sell_order(uint64_t id) {
 }
 
 uint64_t OrderBook_List::market_buy_order(BuyOrder order) {
-  if (sell_head) {
+  uint64_t remaining = order.size;
+  uint64_t last_id = 0;
+  while (remaining > 0 && sell_head) {
     SellBlock *n = sell_head;
-    uint64_t id = n->order.id;
-    unlink(n);
-    sell_index.erase(id);
-    delete n;
-    return id;
+    last_id = n->order.id;
+    if (n->order.size <= remaining) {
+      remaining -= n->order.size;
+      unlink(n);
+      sell_index.erase(n->order.id);
+      delete n;
+    } else {
+      n->order.size -= remaining;
+      remaining = 0;
+    }
   }
-  order.price = UINT64_MAX;
-  return insert_buy_order(order);
+  if (last_id == 0) {
+    order.price = UINT64_MAX;
+    return insert_buy_order(order);
+  }
+  return last_id;
 }
 
 uint64_t OrderBook_List::market_sell_order(SellOrder order) {
-  if (buy_head) {
+  uint64_t remaining = order.size;
+  uint64_t last_id = 0;
+  while (remaining > 0 && buy_head) {
     BuyBlock *n = buy_head;
-    uint64_t id = n->order.id;
-    unlink(n);
-    buy_index.erase(id);
-    delete n;
-    return id;
+    last_id = n->order.id;
+    if (n->order.size <= remaining) {
+      remaining -= n->order.size;
+      unlink(n);
+      buy_index.erase(n->order.id);
+      delete n;
+    } else {
+      n->order.size -= remaining;
+      remaining = 0;
+    }
   }
-  order.price = 0;
-  return insert_sell_order(order);
+  if (last_id == 0) {
+    order.price = 0;
+    return insert_sell_order(order);
+  }
+  return last_id;
 }
 
 std::pair<BuyOrder, SellOrder> OrderBook_List::top_of_book() {
@@ -163,14 +185,21 @@ bool OrderBook_List::match() {
   bool did = false;
   while (buy_head && sell_head &&
          buy_head->order.price >= sell_head->order.price) {
-    BuyBlock *b = buy_head;
-    SellBlock *s = sell_head;
-    unlink(b);
-    unlink(s);
-    buy_index.erase(b->order.id);
-    sell_index.erase(s->order.id);
-    delete b;
-    delete s;
+    uint64_t fill = std::min(buy_head->order.size, sell_head->order.size);
+    buy_head->order.size -= fill;
+    sell_head->order.size -= fill;
+    if (buy_head->order.size == 0) {
+      BuyBlock *b = buy_head;
+      unlink(b);
+      buy_index.erase(b->order.id);
+      delete b;
+    }
+    if (sell_head->order.size == 0) {
+      SellBlock *s = sell_head;
+      unlink(s);
+      sell_index.erase(s->order.id);
+      delete s;
+    }
     did = true;
   }
   return did;
