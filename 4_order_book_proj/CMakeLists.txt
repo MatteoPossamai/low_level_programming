@@ -5,6 +5,7 @@ project(OrderBook LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -47,17 +48,17 @@ target_compile_options(bench_order_book PRIVATE
     -O2 -g -Wall -Wextra -Wshadow
 )
 
-add_library(protocol_codec STATIC
-    protocol/message.cpp
+add_library(engine STATIC
+    src/message.cpp
 )
-target_include_directories(protocol_codec PUBLIC protocol)
-target_compile_options(protocol_codec PRIVATE
+target_include_directories(engine PUBLIC src)
+target_compile_options(engine PRIVATE
     -O2 -g -Wall -Wextra -Wshadow
 )
 
 add_executable(bench_codec benchmark/codec_bench.cpp)
 target_link_libraries(bench_codec PRIVATE
-    protocol_codec
+    engine
     benchmark::benchmark
 )
 target_compile_options(bench_codec PRIVATE
