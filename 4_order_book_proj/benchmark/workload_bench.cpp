@@ -36,7 +36,7 @@ struct Op {
   };
   Kind kind;
   uint64_t price;
-  uint64_t size;
+  uint32_t size;
   uint64_t pick; // for CAN_*: index-mod into live-ids at replay time
 };
 
@@ -47,7 +47,7 @@ std::vector<Op> generate(uint64_t n_ops, uint64_t seed) {
   std::uniform_int_distribution<int> mix(0, 99);
   std::uniform_int_distribution<int> side(0, 1);
   std::uniform_int_distribution<uint64_t> price(1, 1000);
-  std::uniform_int_distribution<uint64_t> size(1, 100);
+  std::uniform_int_distribution<uint32_t> size(1, 100);
 
   std::vector<Op> ops;
   ops.reserve(n_ops);
@@ -77,7 +77,7 @@ void warmup(Book &book, uint64_t depth, uint64_t seed,
   std::mt19937_64 rng(seed);
   std::uniform_int_distribution<int> side(0, 1);
   std::uniform_int_distribution<uint64_t> price(1, 1000);
-  std::uniform_int_distribution<uint64_t> size(1, 100);
+  std::uniform_int_distribution<uint32_t> size(1, 100);
   for (uint64_t i = 0; i < depth; i++) {
     if (side(rng) == 0) {
       BuyOrder o{0, price(rng), size(rng)};
