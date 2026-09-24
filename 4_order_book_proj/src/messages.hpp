@@ -93,6 +93,7 @@ public:
   static constexpr char TYPE = 'O';
   static constexpr size_t WIRE_SIZE = 49;
   explicit EnterRequestView(const std::byte *buf) : p(buf) {}
+  const std::byte *data() const { return p; }
 
   uint64_t UserRefNum() const { return detail::load_be64(p + 1); }
   SideEnum Side() const {
@@ -413,8 +414,13 @@ public:
 using UOUCHMessage =
     std::variant<EnterRequestView, CancelRequestView, AcceptResponseView,
                  CancelledResponseView, ExecutedResponseView>;
-using OUCHMessageIn = std::variant<EnterRequestView, CancelRequestView>;
-using OUCHMessageOut = std::variant<AcceptResponseView, CancelledResponseView,
-                                    ExecutedResponseView>;
+// Queue payloads: raw wire bytes, owned by value, sized for the largest type.
+// Wrap with decode() / a View on the consumer side.
+using OUCHMessageIn = std::array<
+    std::byte, std::max(EnterRequestView::WIRE_SIZE, CancelRequestView::WIRE_SIZE)>;
+using OUCHMessageOut =
+    std::array<std::byte, std::max({AcceptResponseView::WIRE_SIZE,
+                                    CancelledResponseView::WIRE_SIZE,
+                                    ExecutedResponseView::WIRE_SIZE})>;
 
 UOUCHMessage decode(const std::byte *bytes);
