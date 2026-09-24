@@ -91,33 +91,34 @@ class EnterRequestView {
 
 public:
   static constexpr char TYPE = 'O';
-  static constexpr size_t WIRE_SIZE = 49;
+  static constexpr size_t WIRE_SIZE = 47;
   explicit EnterRequestView(const std::byte *buf) : p(buf) {}
   const std::byte *data() const { return p; }
 
-  uint64_t UserRefNum() const { return detail::load_be64(p + 1); }
+  uint32_t UserRefNum() const { return detail::load_be32(p + 1); }
   SideEnum Side() const {
-    return static_cast<SideEnum>(detail::load_char(p + 9));
+    return static_cast<SideEnum>(detail::load_char(p + 5));
   }
-  uint32_t Quantity() const { return detail::load_be32(p + 10); }
-  std::string_view Symbol() const { return detail::load_str(p + 14, 8); }
-  uint64_t Price() const { return detail::load_be64(p + 22); }
+  uint32_t Quantity() const { return detail::load_be32(p + 6); }
+  std::string_view Symbol() const { return detail::load_str(p + 10, 8); }
+  uint64_t Price() const { return detail::load_be64(p + 18); }
   TimeInForceEnum TimeInForce() const {
-    return static_cast<TimeInForceEnum>(detail::load_char(p + 30));
+    return static_cast<TimeInForceEnum>(detail::load_char(p + 26));
   }
   DisplayEnum Display() const {
-    return static_cast<DisplayEnum>(detail::load_char(p + 31));
+    return static_cast<DisplayEnum>(detail::load_char(p + 27));
   }
   CapacityEnum Capacity() const {
-    return static_cast<CapacityEnum>(detail::load_char(p + 32));
+    return static_cast<CapacityEnum>(detail::load_char(p + 28));
   }
   InterMarketSweepEligEnum InterMarketSweepElig() const {
-    return static_cast<InterMarketSweepEligEnum>(detail::load_char(p + 33));
+    return static_cast<InterMarketSweepEligEnum>(detail::load_char(p + 29));
   }
   CrossTypeEnum CrossType() const {
-    return static_cast<CrossTypeEnum>(detail::load_char(p + 34));
+    return static_cast<CrossTypeEnum>(detail::load_char(p + 30));
   }
-  std::string_view ClOrdID() const { return detail::load_str(p + 35, 14); }
+  std::string_view ClOrdID() const { return detail::load_str(p + 31, 14); }
+  uint16_t AppendageLength() const { return detail::load_be16(p + 45); }
 };
 
 class CancelRequestView {
@@ -125,11 +126,11 @@ class CancelRequestView {
 
 public:
   static constexpr char TYPE = 'X';
-  static constexpr size_t WIRE_SIZE = 13;
+  static constexpr size_t WIRE_SIZE = 9; // Appendage Length is optional
   explicit CancelRequestView(const std::byte *buf) : p(buf) {}
 
-  uint64_t UserRefNum() const { return detail::load_be64(p + 1); }
-  uint32_t Quantity() const { return detail::load_be32(p + 9); }
+  uint32_t UserRefNum() const { return detail::load_be32(p + 1); }
+  uint32_t Quantity() const { return detail::load_be32(p + 5); }
 };
 
 class AcceptResponseView {
@@ -137,35 +138,36 @@ class AcceptResponseView {
 
 public:
   static constexpr char TYPE = 'A';
-  static constexpr size_t WIRE_SIZE = 66;
+  static constexpr size_t WIRE_SIZE = 64;
   explicit AcceptResponseView(const std::byte *buf) : p(buf) {}
 
   uint64_t Timestamp() const { return detail::load_be64(p + 1); }
-  uint64_t UserRefNum() const { return detail::load_be64(p + 9); }
+  uint32_t UserRefNum() const { return detail::load_be32(p + 9); }
   SideEnum Side() const {
-    return static_cast<SideEnum>(detail::load_char(p + 17));
+    return static_cast<SideEnum>(detail::load_char(p + 13));
   }
-  uint32_t Quantity() const { return detail::load_be32(p + 18); }
-  std::string_view Symbol() const { return detail::load_str(p + 22, 8); }
-  uint64_t Price() const { return detail::load_be64(p + 30); }
+  uint32_t Quantity() const { return detail::load_be32(p + 14); }
+  std::string_view Symbol() const { return detail::load_str(p + 18, 8); }
+  uint64_t Price() const { return detail::load_be64(p + 26); }
   TimeInForceEnum TimeInForce() const {
-    return static_cast<TimeInForceEnum>(detail::load_char(p + 38));
+    return static_cast<TimeInForceEnum>(detail::load_char(p + 34));
   }
   DisplayEnum Display() const {
-    return static_cast<DisplayEnum>(detail::load_char(p + 39));
+    return static_cast<DisplayEnum>(detail::load_char(p + 35));
   }
-  uint64_t OrderReferenceNumber() const { return detail::load_be64(p + 40); }
-  char Capacity() const { return detail::load_char(p + 48); }
+  uint64_t OrderReferenceNumber() const { return detail::load_be64(p + 36); }
+  char Capacity() const { return detail::load_char(p + 44); }
   InterMarketSweepEligEnum InterMarketSweepElig() const {
-    return static_cast<InterMarketSweepEligEnum>(detail::load_char(p + 49));
+    return static_cast<InterMarketSweepEligEnum>(detail::load_char(p + 45));
   }
   CrossTypeEnum CrossType() const {
-    return static_cast<CrossTypeEnum>(detail::load_char(p + 50));
+    return static_cast<CrossTypeEnum>(detail::load_char(p + 46));
   }
   OrderStateEnum OrderState() const {
-    return static_cast<OrderStateEnum>(detail::load_char(p + 51));
+    return static_cast<OrderStateEnum>(detail::load_char(p + 47));
   }
-  std::string_view ClOrdID() const { return detail::load_str(p + 52, 14); }
+  std::string_view ClOrdID() const { return detail::load_str(p + 48, 14); }
+  uint16_t AppendageLength() const { return detail::load_be16(p + 62); }
 };
 
 class CancelledResponseView {
@@ -173,13 +175,13 @@ class CancelledResponseView {
 
 public:
   static constexpr char TYPE = 'C';
-  static constexpr size_t WIRE_SIZE = 22;
+  static constexpr size_t WIRE_SIZE = 18; // Appendage Length is optional
   explicit CancelledResponseView(const std::byte *buf) : p(buf) {}
 
   uint64_t Timestamp() const { return detail::load_be64(p + 1); }
-  uint64_t UserRefNum() const { return detail::load_be64(p + 9); }
-  uint32_t Quantity() const { return detail::load_be32(p + 17); }
-  char Reason() const { return detail::load_char(p + 21); }
+  uint32_t UserRefNum() const { return detail::load_be32(p + 9); }
+  uint32_t Quantity() const { return detail::load_be32(p + 13); }
+  char Reason() const { return detail::load_char(p + 17); }
 };
 
 class ExecutedResponseView {
@@ -187,15 +189,16 @@ class ExecutedResponseView {
 
 public:
   static constexpr char TYPE = 'E';
-  static constexpr size_t WIRE_SIZE = 38;
+  static constexpr size_t WIRE_SIZE = 36;
   explicit ExecutedResponseView(const std::byte *buf) : p(buf) {}
 
   uint64_t Timestamp() const { return detail::load_be64(p + 1); }
-  uint64_t UserRefNum() const { return detail::load_be64(p + 9); }
-  uint32_t Quantity() const { return detail::load_be32(p + 17); }
-  uint64_t Price() const { return detail::load_be64(p + 21); }
-  char LiquidityFlag() const { return detail::load_char(p + 29); }
-  uint64_t MatchNumber() const { return detail::load_be64(p + 30); }
+  uint32_t UserRefNum() const { return detail::load_be32(p + 9); }
+  uint32_t Quantity() const { return detail::load_be32(p + 13); }
+  uint64_t Price() const { return detail::load_be64(p + 17); }
+  char LiquidityFlag() const { return detail::load_char(p + 25); }
+  uint64_t MatchNumber() const { return detail::load_be64(p + 26); }
+  uint16_t AppendageLength() const { return detail::load_be16(p + 34); }
 };
 
 // ---------------- Builders (encode side) ----------------
@@ -211,48 +214,53 @@ public:
     detail::store_char(buf.data() + 0, EnterRequestView::TYPE);
   }
 
-  EnterRequestBuilder &UserRefNum(uint64_t v) {
-    detail::store_be64(buf.data() + 1, v);
+  EnterRequestBuilder &UserRefNum(uint32_t v) {
+    detail::store_be32(buf.data() + 1, v);
     return *this;
   }
   EnterRequestBuilder &Side(SideEnum v) {
-    detail::store_char(buf.data() + 9, static_cast<char>(v));
+    detail::store_char(buf.data() + 5, static_cast<char>(v));
     return *this;
   }
   EnterRequestBuilder &Quantity(uint32_t v) {
-    detail::store_be32(buf.data() + 10, v);
+    detail::store_be32(buf.data() + 6, v);
     return *this;
   }
   EnterRequestBuilder &Symbol(std::string_view v) {
-    detail::store_str(buf.data() + 14, v, 8);
+    detail::store_str(buf.data() + 10, v, 8);
     return *this;
   }
   EnterRequestBuilder &Price(uint64_t v) {
-    detail::store_be64(buf.data() + 22, v);
+    detail::store_be64(buf.data() + 18, v);
     return *this;
   }
   EnterRequestBuilder &TimeInForce(TimeInForceEnum v) {
-    detail::store_char(buf.data() + 30, static_cast<char>(v));
+    detail::store_char(buf.data() + 26, static_cast<char>(v));
     return *this;
   }
   EnterRequestBuilder &Display(DisplayEnum v) {
-    detail::store_char(buf.data() + 31, static_cast<char>(v));
+    detail::store_char(buf.data() + 27, static_cast<char>(v));
     return *this;
   }
   EnterRequestBuilder &Capacity(CapacityEnum v) {
-    detail::store_char(buf.data() + 32, static_cast<char>(v));
+    detail::store_char(buf.data() + 28, static_cast<char>(v));
     return *this;
   }
   EnterRequestBuilder &InterMarketSweepElig(InterMarketSweepEligEnum v) {
-    detail::store_char(buf.data() + 33, static_cast<char>(v));
+    detail::store_char(buf.data() + 29, static_cast<char>(v));
     return *this;
   }
   EnterRequestBuilder &CrossType(CrossTypeEnum v) {
-    detail::store_char(buf.data() + 34, static_cast<char>(v));
+    detail::store_char(buf.data() + 30, static_cast<char>(v));
     return *this;
   }
   EnterRequestBuilder &ClOrdID(std::string_view v) {
-    detail::store_str(buf.data() + 35, v, 14);
+    detail::store_str(buf.data() + 31, v, 14);
+    return *this;
+  }
+
+  EnterRequestBuilder &AppendageLength(uint16_t v) {
+    detail::store_be16(buf.data() + 45, v);
     return *this;
   }
 
@@ -267,12 +275,12 @@ public:
     detail::store_char(buf.data() + 0, CancelRequestView::TYPE);
   }
 
-  CancelRequestBuilder &UserRefNum(uint64_t v) {
-    detail::store_be64(buf.data() + 1, v);
+  CancelRequestBuilder &UserRefNum(uint32_t v) {
+    detail::store_be32(buf.data() + 1, v);
     return *this;
   }
   CancelRequestBuilder &Quantity(uint32_t v) {
-    detail::store_be32(buf.data() + 9, v);
+    detail::store_be32(buf.data() + 5, v);
     return *this;
   }
 
@@ -291,56 +299,61 @@ public:
     detail::store_be64(buf.data() + 1, v);
     return *this;
   }
-  AcceptResponseBuilder &UserRefNum(uint64_t v) {
-    detail::store_be64(buf.data() + 9, v);
+  AcceptResponseBuilder &UserRefNum(uint32_t v) {
+    detail::store_be32(buf.data() + 9, v);
     return *this;
   }
   AcceptResponseBuilder &Side(SideEnum v) {
-    detail::store_char(buf.data() + 17, static_cast<char>(v));
+    detail::store_char(buf.data() + 13, static_cast<char>(v));
     return *this;
   }
   AcceptResponseBuilder &Quantity(uint32_t v) {
-    detail::store_be32(buf.data() + 18, v);
+    detail::store_be32(buf.data() + 14, v);
     return *this;
   }
   AcceptResponseBuilder &Symbol(std::string_view v) {
-    detail::store_str(buf.data() + 22, v, 8);
+    detail::store_str(buf.data() + 18, v, 8);
     return *this;
   }
   AcceptResponseBuilder &Price(uint64_t v) {
-    detail::store_be64(buf.data() + 30, v);
+    detail::store_be64(buf.data() + 26, v);
     return *this;
   }
   AcceptResponseBuilder &TimeInForce(TimeInForceEnum v) {
-    detail::store_char(buf.data() + 38, static_cast<char>(v));
+    detail::store_char(buf.data() + 34, static_cast<char>(v));
     return *this;
   }
   AcceptResponseBuilder &Display(DisplayEnum v) {
-    detail::store_char(buf.data() + 39, static_cast<char>(v));
+    detail::store_char(buf.data() + 35, static_cast<char>(v));
     return *this;
   }
   AcceptResponseBuilder &OrderReferenceNumber(uint64_t v) {
-    detail::store_be64(buf.data() + 40, v);
+    detail::store_be64(buf.data() + 36, v);
     return *this;
   }
   AcceptResponseBuilder &Capacity(char v) {
-    detail::store_char(buf.data() + 48, v);
+    detail::store_char(buf.data() + 44, v);
     return *this;
   }
   AcceptResponseBuilder &InterMarketSweepElig(InterMarketSweepEligEnum v) {
-    detail::store_char(buf.data() + 49, static_cast<char>(v));
+    detail::store_char(buf.data() + 45, static_cast<char>(v));
     return *this;
   }
   AcceptResponseBuilder &CrossType(CrossTypeEnum v) {
-    detail::store_char(buf.data() + 50, static_cast<char>(v));
+    detail::store_char(buf.data() + 46, static_cast<char>(v));
     return *this;
   }
   AcceptResponseBuilder &OrderState(OrderStateEnum v) {
-    detail::store_char(buf.data() + 51, static_cast<char>(v));
+    detail::store_char(buf.data() + 47, static_cast<char>(v));
     return *this;
   }
   AcceptResponseBuilder &ClOrdID(std::string_view v) {
-    detail::store_str(buf.data() + 52, v, 14);
+    detail::store_str(buf.data() + 48, v, 14);
+    return *this;
+  }
+
+  AcceptResponseBuilder &AppendageLength(uint16_t v) {
+    detail::store_be16(buf.data() + 62, v);
     return *this;
   }
 
@@ -359,16 +372,16 @@ public:
     detail::store_be64(buf.data() + 1, v);
     return *this;
   }
-  CancelledResponseBuilder &UserRefNum(uint64_t v) {
-    detail::store_be64(buf.data() + 9, v);
+  CancelledResponseBuilder &UserRefNum(uint32_t v) {
+    detail::store_be32(buf.data() + 9, v);
     return *this;
   }
   CancelledResponseBuilder &Quantity(uint32_t v) {
-    detail::store_be32(buf.data() + 17, v);
+    detail::store_be32(buf.data() + 13, v);
     return *this;
   }
   CancelledResponseBuilder &Reason(char v) {
-    detail::store_char(buf.data() + 21, v);
+    detail::store_char(buf.data() + 17, v);
     return *this;
   }
 
@@ -387,24 +400,29 @@ public:
     detail::store_be64(buf.data() + 1, v);
     return *this;
   }
-  ExecutedResponseBuilder &UserRefNum(uint64_t v) {
-    detail::store_be64(buf.data() + 9, v);
+  ExecutedResponseBuilder &UserRefNum(uint32_t v) {
+    detail::store_be32(buf.data() + 9, v);
     return *this;
   }
   ExecutedResponseBuilder &Quantity(uint32_t v) {
-    detail::store_be32(buf.data() + 17, v);
+    detail::store_be32(buf.data() + 13, v);
     return *this;
   }
   ExecutedResponseBuilder &Price(uint64_t v) {
-    detail::store_be64(buf.data() + 21, v);
+    detail::store_be64(buf.data() + 17, v);
     return *this;
   }
   ExecutedResponseBuilder &LiquidityFlag(char v) {
-    detail::store_char(buf.data() + 29, v);
+    detail::store_char(buf.data() + 25, v);
     return *this;
   }
   ExecutedResponseBuilder &MatchNumber(uint64_t v) {
-    detail::store_be64(buf.data() + 30, v);
+    detail::store_be64(buf.data() + 26, v);
+    return *this;
+  }
+
+  ExecutedResponseBuilder &AppendageLength(uint16_t v) {
+    detail::store_be16(buf.data() + 34, v);
     return *this;
   }
 
@@ -422,5 +440,12 @@ using OUCHMessageOut =
     std::array<std::byte, std::max({AcceptResponseView::WIRE_SIZE,
                                     CancelledResponseView::WIRE_SIZE,
                                     ExecutedResponseView::WIRE_SIZE})>;
+
+// What inbound pushes to the engine: the wire bytes plus the OUCH account of
+// the connection they arrived on. The account is not part of the message.
+struct InboundMessage {
+  uint32_t account;
+  OUCHMessageIn bytes;
+};
 
 UOUCHMessage decode(const std::byte *bytes);

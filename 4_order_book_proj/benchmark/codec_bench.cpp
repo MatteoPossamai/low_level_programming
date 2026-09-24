@@ -29,7 +29,7 @@
 
 static EnterRequestBuilder make_populated() {
   EnterRequestBuilder b;
-  b.UserRefNum(0xDEADBEEFCAFEBABEULL)
+  b.UserRefNum(0xDEADBEEFu)
       .Side(SideEnum::B)
       .Quantity(100)
       .Symbol("AAPL")
@@ -117,7 +117,7 @@ static void run_roundtrip_check() {
 
   auto msg = decode(wire.data());
   auto &v = std::get<EnterRequestView>(msg);
-  CHECK(v.UserRefNum() == 0xDEADBEEFCAFEBABEULL);
+  CHECK(v.UserRefNum() == 0xDEADBEEFu);
   CHECK(v.Side() == SideEnum::B);
   CHECK(v.Quantity() == 100);
   CHECK(v.Symbol() == "AAPL    ");
