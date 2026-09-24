@@ -413,5 +413,8 @@ public:
 using UOUCHMessage =
     std::variant<EnterRequestView, CancelRequestView, AcceptResponseView,
                  CancelledResponseView, ExecutedResponseView>;
+using OUCHMessageIn = std::variant<EnterRequestView, CancelRequestView>;
+using OUCHMessageOut = std::variant<AcceptResponseView, CancelledResponseView,
+                                    ExecutedResponseView>;
 
 UOUCHMessage decode(const std::byte *bytes);

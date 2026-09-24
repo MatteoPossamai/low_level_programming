@@ -8,9 +8,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
+find_package(GTest REQUIRED)
 find_package(benchmark REQUIRED)
 
 add_library(sorted_vector_book STATIC
@@ -64,3 +65,18 @@ target_link_libraries(bench_codec PRIVATE
 target_compile_options(bench_codec PRIVATE
     -O2 -g -Wall -Wextra -Wshadow
 )
+
+add_executable(allocator_tests tests/allocator_test.cpp)
+target_include_directories(allocator_tests PRIVATE src)
+target_link_libraries(allocator_tests PRIVATE GTest::gtest_main)
+target_compile_options(allocator_tests PRIVATE
+    -O0 -g -Wall -Wextra -Wshadow
+)
+
+set(SANITIZERS
+    -fsanitize=address,undefined
+    -fno-sanitize-recover=undefined
+    -fno-omit-frame-pointer
+)
+target_compile_options(allocator_tests PRIVATE ${SANITIZERS})
+target_link_options(allocator_tests PRIVATE ${SANITIZERS})
