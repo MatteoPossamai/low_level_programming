@@ -1,26 +1,40 @@
-# Order book — Q4 Block 1
+# Order book / matching engine — Q4
 
-Price-level data structure chosen by measurement. Three implementations, one
-workload benchmark, structural pick informed by the numbers rather than
-folklore.
+Block 1: price-level data structure chosen by measurement (three
+implementations, one workload benchmark). Blocks 2-3: OUCH 5.0 codec, pool
+allocator, queues, and a price-time matching engine built on the winning
+structure, with scenario tests and a baseline benchmark. Engine design in
+`DESIGN_DOC.md`.
 
 ## Layout
 
 ```
 4_order_book_proj/
-├── data_structure/
+├── data_structure_bench/        Block 1 structures
 │   ├── base.hpp                 shared types (BuyOrder, SellOrder, BuyBlock, SellBlock, OrderBook interface)
 │   ├── sorted_vector_str.{hpp,cpp}   O(n) shift-based sorted vector
 │   ├── list_str.{hpp,cpp}       intrusive doubly-linked list + id→node hash map
 │   └── tick_offset_str.{hpp,cpp}     sparse array indexed by price, FIFO list per level
+├── src/                         engine
+│   ├── messages.hpp, message.cpp     OUCH 5.0 views/builders, decode(), queue payload types
+│   ├── queues.hpp, queues_impl.hpp   MPSC (inbound) and SPSC (outbound) sequence-number queues
+│   ├── allocator.hpp            mmap-backed fixed-size pool (free list)
+│   ├── engine.hpp               matching engine: insert/cancel, outbound messages, process()/run()
+│   └── main.cpp                 wiring placeholder
+├── tests/
+│   ├── allocator_test.cpp       pool allocator contract tests
+│   └── engine_test.cpp          input→output scenarios + random property test
 ├── benchmark/
-│   └── workload_bench.cpp       Google Benchmark harness, templated on Book type
+│   ├── workload_bench.cpp       Block 1 harness, templated on Book type
+│   ├── codec_bench.cpp          codec encode/decode + round-trip check
+│   └── engine_bench.cpp         engine baseline on realistic traffic
 ├── CMakeLists.txt
-├── DATA_STRUCTURE.md            hypotheses + results + interpretation
+├── DATA_STRUCTURE.md            Block 1 hypotheses + results + interpretation
+├── DESIGN_DOC.md                engine components, threading, rules
 └── README.md                    this file
 ```
 
-## Contract
+## Block 1 contract
 
 All implementations expose the same interface (`OrderBook` in `base.hpp`), with
 `final` on each derived so the benchmark's static-dispatch calls devirtualise
@@ -56,16 +70,21 @@ std::pair<BuyOrder, SellOrder> top_of_book();
 
 ## Build and run
 
-Requires Google Benchmark installed system-wide.
+Requires Google Benchmark and GoogleTest installed system-wide.
 
 ```
 cmake -S . -B build && cmake --build build
-./build/bench_order_book                              # run everything
+./build/allocator_tests                               # ASan+UBSan
+./build/engine_tests                                  # ASan+UBSan
+./build/bench_engine                                  # engine baseline
+./build/bench_codec
+./build/bench_order_book                              # Block 1, everything
 ./build/bench_order_book --benchmark_filter=TickOff   # one structure
 ./build/bench_order_book --benchmark_format=json --benchmark_out=results.json
 ```
 
-Compiler flags: `-O2 -g -Wall -Wextra -Wshadow`, C++20.
+Compiler flags: `-O2 -g -Wall -Wextra -Wshadow`, C++20. Test targets add
+`-fsanitize=address,undefined -fno-sanitize-recover=undefined`.
 
 ## Adding another structure
 
@@ -78,7 +97,7 @@ Compiler flags: `-O2 -g -Wall -Wextra -Wshadow`, C++20.
 
 Same op script hits every impl → results are directly comparable.
 
-## Workload
+## Block 1 workload
 
 From `DATA_STRUCTURE.md`: insert 45%, cancel 43%, market 2%, top-of-book 10%.
 Op script generated once per `(seed, size)` via deterministic RNG; replayed
@@ -89,31 +108,45 @@ across the replay.
 Args are `{book_depth, ops_per_iteration}`. Depth = orders pre-loaded before
 timing starts.
 
-## Current state (Block 1)
+## Current state
 
-MVP complete. All three structures pass the workload without crashes and with
-matched semantics (walk-and-consume market, partial fills in match).
+**Block 1** — MVP complete. Winner by measurement at real-book scales:
+**tick-offset (sparse array)**. Numbers in `DATA_STRUCTURE.md`.
 
-Winner by measurement at real-book scales: **tick-offset (sparse array)**.
-Full numbers and interpretation in `DATA_STRUCTURE.md`. Tick-offset is roughly
-flat with depth; sorted-vector and list both decay linearly.
+**Engine** (`src/engine.hpp`) — tick-offset book, intrusive FIFO per level,
+blocks from the pool allocator, orders keyed by `account << 32 | UserRefNum`.
+Price-time matching for limit and market orders, cancel as reduce-to-new-size.
+Emits OUCH Accepted / Executed (one per side, shared match number) / Canceled
+with the destination account. All tests pass under ASan+UBSan.
+
+**Baseline** (`bench_engine`, enter 50% / cancel 48% / market 2%, 100k
+messages per iteration, -O2, threads unpinned, CPU scaling on):
+
+| Resting depth | Time / 100k msgs | Throughput |
+|---|---|---|
+| 1,000 | 8.10 ms | 12.35 M msg/s |
+| 10,000 | 8.18 ms | 12.22 M msg/s |
+| 50,000 | 8.69 ms | 11.51 M msg/s |
+
+## Known limits (accepted for the POC)
+
+- Price is used raw as the level index: inbound must reject price 0 and
+  price >= `BUFFER_SIZE`.
+- `0x7FFFFFFF` is treated as market on both sides.
+- Sides `T`/`E` (short sell) throw.
+- Cancel quantity read as the new open size; spec wording ("executed in
+  total") is ambiguous.
+- Codec has no variable-length optional appendage support.
+- Outbound `enqueue` blocks when full: a stalled fan-out stalls the engine
+  (Block 5 policy).
 
 ## Open items
 
-- **Pool allocator** — highest-leverage optimisation. All three structures use
-  `new`/`delete` per node. A slab pool per node type kills the malloc tax and
-  clusters nodes in one region for cache locality. Rerun benchmark to isolate
-  allocator cost from structure cost.
-- **Price-level bitset for best-idx maintenance** in tick-offset. Walk-down or
-  walk-up after emptying a level is currently a linear scan across `uint64_t`
-  slots; a bitset plus `__builtin_ctzll` / `_bit_scan_reverse` makes it
-  O(1) in the sparse case.
-- **`std::unordered_map` → flat vector index**. Ids are monotonic; a
-  `std::vector<Block*>` sized to the peak-id window replaces the hash on cancel
-  with a single load.
-- **Correctness harness**. Currently trusting the shape of the numbers.
-  A tiny hand-driven driver (~30 lines) inserting a fixed sequence and
-  asserting invariants after each op would guard against regressions when
-  swapping allocators or changing internal layout.
-- **Vary the op mix**. What if cancel dominates (70%)? List's O(1) cancel
-  should finally start paying. Parametrise via `state.range()`.
+- **Profile the baseline** — throughput is flat with depth, so per-message
+  fixed costs dominate. Candidates: `unordered_map`, `clock_gettime`, message
+  encoding. Write the hypothesis before running `perf`.
+- **`std::unordered_map` → flat index** for cancel lookup.
+- **Price-level bitset** for best-idx walks after a level empties.
+- **Inbound validation stage** (price range, side, quantity) before the queue.
+- **Codec fuzzing.**
+- **Vary the op mix** via `state.range()`.
