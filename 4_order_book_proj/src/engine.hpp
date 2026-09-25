@@ -2,9 +2,12 @@
 #include "allocator.hpp"
 #include "messages.hpp"
 #include "queues.hpp"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <ctime>
+#include <span>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -14,7 +17,7 @@ class Engine {
   constexpr static uint64_t MAXLIMIT = 1'999'999'9900;
 
   mpsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue;
-  spsc_queue<OUCHMessageOut, QUEUE_SIZE> &outgoing_queue;
+  spsc_queue<OutboundMessage, QUEUE_SIZE> &outgoing_queue;
 
   struct OrderBlock {
     std::array<std::byte, EnterRequestView::WIRE_SIZE> raw; // own copy
@@ -32,13 +35,14 @@ class Engine {
     OrderBlock *tail = nullptr;
   };
 
-  // An order is identified by (OUCH account, UserRefNum). UserRefNum is 32 bits,
-  // so both fit in one 64-bit key.
+  // An order is identified by (OUCH account, UserRefNum). UserRefNum is 32
+  // bits, so both fit in one 64-bit key.
   static uint64_t order_key(uint32_t account, uint32_t user_ref_num) {
     return (static_cast<uint64_t>(account) << 32) | user_ref_num;
   }
 
   uint64_t counter = 0;
+  uint64_t match_counter = 0;
   std::unordered_map<uint64_t, OrderBlock *> order_blocks_map;
 
   std::array<OrderList, BUFFER_SIZE> order_buffer{};
@@ -48,12 +52,74 @@ class Engine {
   void unlink(OrderBlock *block, OrderList *list);
   void append_list(OrderBlock *block, OrderList *list);
 
+  static uint64_t timestamp() {
+    timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return static_cast<uint64_t>(ts.tv_sec % 86400) * 1'000'000'000 +
+           static_cast<uint64_t>(ts.tv_nsec);
+  }
+
+  void publish(uint32_t account, std::span<const std::byte> bytes) {
+    OutboundMessage msg{account, {}};
+    std::memcpy(msg.bytes.data(), bytes.data(), bytes.size());
+    outgoing_queue.enqueue(msg);
+  }
+
+  void send_accepted(uint32_t account, EnterRequestView order, uint64_t id) {
+    publish(account, AcceptResponseBuilder()
+                         .Timestamp(timestamp())
+                         .UserRefNum(order.UserRefNum())
+                         .Side(order.Side())
+                         .Quantity(order.Quantity())
+                         .Symbol(order.Symbol())
+                         .Price(order.Price())
+                         .TimeInForce(order.TimeInForce())
+                         .Display(order.Display())
+                         .OrderReferenceNumber(id)
+                         .Capacity(static_cast<char>(order.Capacity()))
+                         .InterMarketSweepElig(order.InterMarketSweepElig())
+                         .CrossType(order.CrossType())
+                         .OrderState(OrderStateEnum::L)
+                         .ClOrdID(order.ClOrdID())
+                         .bytes());
+  }
+
+  void send_executed(uint32_t account, uint32_t user_ref_num, uint32_t qty,
+                     uint64_t price, char liquidity, uint64_t match) {
+    publish(account, ExecutedResponseBuilder()
+                         .Timestamp(timestamp())
+                         .UserRefNum(user_ref_num)
+                         .Quantity(qty)
+                         .Price(price)
+                         .LiquidityFlag(liquidity)
+                         .MatchNumber(match)
+                         .bytes());
+  }
+
+  void send_fills(uint32_t account, EnterRequestView order, OrderBlock *block,
+                  uint32_t qty, uint64_t price) {
+    uint64_t match = ++match_counter;
+    send_executed(account, order.UserRefNum(), qty, price, 'R', match);
+    send_executed(static_cast<uint32_t>(block->key >> 32),
+                  static_cast<uint32_t>(block->key), qty, price, 'A', match);
+  }
+
+  void send_cancelled(uint32_t account, uint32_t user_ref_num, uint32_t qty,
+                      char reason) {
+    publish(account, CancelledResponseBuilder()
+                         .Timestamp(timestamp())
+                         .UserRefNum(user_ref_num)
+                         .Quantity(qty)
+                         .Reason(reason)
+                         .bytes());
+  }
+
   uint64_t insert_buy_order(uint32_t account, EnterRequestView order);
   uint64_t insert_sell_order(uint32_t account, EnterRequestView order);
 
 public:
   Engine(mpsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue_in,
-         spsc_queue<OUCHMessageOut, QUEUE_SIZE> &outgoing_queue_in)
+         spsc_queue<OutboundMessage, QUEUE_SIZE> &outgoing_queue_in)
       : incoming_queue(incoming_queue_in), outgoing_queue(outgoing_queue_in) {}
   // Blocks live in allocator's mmap region, released when allocator dies.
   ~Engine() = default;
@@ -67,8 +133,8 @@ public:
 };
 
 template <size_t QUEUE_SIZE, size_t BUFFER_SIZE, size_t ALLOCATOR_SIZE>
-void Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::unlink(
-    OrderBlock *block, OrderList *list) {
+void Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::unlink(OrderBlock *block,
+                                                             OrderList *list) {
   if (block->prev)
     block->prev->next = block->next;
   else
@@ -110,14 +176,16 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_order(
 template <size_t QUEUE_SIZE, size_t BUFFER_SIZE, size_t ALLOCATOR_SIZE>
 uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_buy_order(
     uint32_t account, EnterRequestView order) {
-  // TODO: broadcast out of the engine when there are fills/partial fills
-
+  uint64_t id = ++counter;
+  send_accepted(account, order, id);
   // No need to handle the market order, since that is already very high number
   uint32_t curr_qty = order.Quantity();
   while (best_sell_idx < BUFFER_SIZE && best_sell_idx <= order.Price() &&
          curr_qty > 0) {
     OrderList *list = &order_buffer[best_sell_idx];
     OrderBlock *block = list->head;
+    send_fills(account, order, block, std::min(block->curr_qty, curr_qty),
+               best_sell_idx);
     if (block->curr_qty > curr_qty) {
       // Inserted order got filled
       block->curr_qty -= curr_qty;
@@ -135,17 +203,22 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_buy_order(
     }
   }
   if (curr_qty > 0) {
-    if (order.Price() == MARKETPRICE)
-      return 0; // unfilled rest is cancelled, never rests. TODO: send Cancelled
+    if (order.Price() == MARKETPRICE) {
+      send_cancelled(account, order.UserRefNum(), curr_qty, 'I');
+      return 0; // unfilled rest is cancelled, never rests.
+    }
     auto new_block = allocator.allocate();
-    if (new_block == nullptr)
-      return 0; // book full: unfilled rest is cancelled. TODO: send Cancelled
+    if (new_block == nullptr) {
+      send_cancelled(account, order.UserRefNum(), curr_qty, 'Z');
+      return 0; // book full: unfilled rest is cancelled.
+    }
     if (order.Price() > best_buy_idx)
       best_buy_idx = order.Price();
-    new_block->id = ++counter;
+    new_block->id = id;
     new_block->key = order_key(account, order.UserRefNum());
     new_block->curr_qty = curr_qty;
-    std::memcpy(new_block->raw.data(), order.data(), EnterRequestView::WIRE_SIZE);
+    std::memcpy(new_block->raw.data(), order.data(),
+                EnterRequestView::WIRE_SIZE);
     append_list(new_block, &order_buffer[order.Price()]);
     order_blocks_map[new_block->key] = new_block;
     return new_block->id;
@@ -156,16 +229,18 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_buy_order(
 template <size_t QUEUE_SIZE, size_t BUFFER_SIZE, size_t ALLOCATOR_SIZE>
 uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_sell_order(
     uint32_t account, EnterRequestView order) {
-  // TODO: broadcast out of the engine when there are fills/partial fills
-
+  uint64_t id = ++counter;
+  send_accepted(account, order, id);
   // Market sell must hit any bid, so match it as the lowest possible limit
   uint64_t limit = order.Price() == MARKETPRICE ? 0 : order.Price();
   uint32_t curr_qty = order.Quantity();
   // best_buy_idx stops at 0 when bids run out, so check the level is non-empty
-  while (order_buffer[best_buy_idx].head != nullptr &&
-         best_buy_idx >= limit && curr_qty > 0) {
+  while (order_buffer[best_buy_idx].head != nullptr && best_buy_idx >= limit &&
+         curr_qty > 0) {
     OrderList *list = &order_buffer[best_buy_idx];
     OrderBlock *block = list->head;
+    send_fills(account, order, block, std::min(block->curr_qty, curr_qty),
+               best_buy_idx);
     if (block->curr_qty > curr_qty) {
       // Inserted order got filled
       block->curr_qty -= curr_qty;
@@ -182,17 +257,22 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_sell_order(
     }
   }
   if (curr_qty > 0) {
-    if (order.Price() == MARKETPRICE)
-      return 0; // unfilled rest is cancelled, never rests. TODO: send Cancelled
+    if (order.Price() == MARKETPRICE) {
+      send_cancelled(account, order.UserRefNum(), curr_qty, 'I');
+      return 0; // unfilled rest is cancelled, never rests.
+    }
     auto new_block = allocator.allocate();
-    if (new_block == nullptr)
-      return 0; // book full: unfilled rest is cancelled. TODO: send Cancelled
+    if (new_block == nullptr) {
+      send_cancelled(account, order.UserRefNum(), curr_qty, 'Z');
+      return 0; // book full: unfilled rest is cancelled.
+    }
     if (order.Price() < best_sell_idx)
       best_sell_idx = order.Price();
-    new_block->id = ++counter;
+    new_block->id = id;
     new_block->key = order_key(account, order.UserRefNum());
     new_block->curr_qty = curr_qty;
-    std::memcpy(new_block->raw.data(), order.data(), EnterRequestView::WIRE_SIZE);
+    std::memcpy(new_block->raw.data(), order.data(),
+                EnterRequestView::WIRE_SIZE);
     append_list(new_block, &order_buffer[order.Price()]);
     order_blocks_map[new_block->key] = new_block;
     return new_block->id;
@@ -205,7 +285,6 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_sell_order(
 template <size_t QUEUE_SIZE, size_t BUFFER_SIZE, size_t ALLOCATOR_SIZE>
 uint32_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::cancel_order(
     uint32_t account, CancelRequestView cancel) {
-  // TODO: send Cancelled with the returned (incremental) quantity
   auto it = order_blocks_map.find(order_key(account, cancel.UserRefNum()));
   if (it == order_blocks_map.end())
     return 0; // unknown or already gone: spec says silently ignore
@@ -217,6 +296,7 @@ uint32_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::cancel_order(
   uint32_t cancelled = block->curr_qty - new_qty;
   if (new_qty > 0) {
     block->curr_qty = new_qty; // reduce in place, keeps time priority
+    send_cancelled(account, cancel.UserRefNum(), cancelled, 'U');
     return cancelled;
   }
 
@@ -239,5 +319,6 @@ uint32_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::cancel_order(
         best_sell_idx++;
     }
   }
+  send_cancelled(account, cancel.UserRefNum(), cancelled, 'U');
   return cancelled;
 }

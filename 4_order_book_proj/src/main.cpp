@@ -8,7 +8,7 @@
 
 int main() {
   mpsc_queue<InboundMessage, MAX_QUEUE_SIZE> incoming_queue;
-  spsc_queue<OUCHMessageOut, MAX_QUEUE_SIZE> outgoing_queue;
+  spsc_queue<OutboundMessage, MAX_QUEUE_SIZE> outgoing_queue;
   auto engine = Engine<MAX_QUEUE_SIZE, MAX_ORDER_BUFFER_SIZE, ALLOCATOR_SIZE>(
       incoming_queue, outgoing_queue);
   return 0;

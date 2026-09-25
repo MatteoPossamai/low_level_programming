@@ -448,4 +448,9 @@ struct InboundMessage {
   OUCHMessageIn bytes;
 };
 
+struct OutboundMessage {
+  uint32_t account;
+  OUCHMessageOut bytes;
+};
+
 UOUCHMessage decode(const std::byte *bytes);
