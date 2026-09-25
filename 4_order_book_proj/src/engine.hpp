@@ -130,6 +130,22 @@ public:
 
   uint64_t insert_order(uint32_t account, EnterRequestView order);
   uint32_t cancel_order(uint32_t account, CancelRequestView cancel);
+
+  void process(const InboundMessage &msg) {
+    auto decoded = decode(msg.bytes.data());
+    if (auto *enter = std::get_if<EnterRequestView>(&decoded))
+      insert_order(msg.account, *enter);
+    else if (auto *cancel = std::get_if<CancelRequestView>(&decoded))
+      cancel_order(msg.account, *cancel);
+  }
+
+  [[noreturn]] void run() {
+    InboundMessage msg;
+    for (;;) {
+      incoming_queue.dequeue(msg);
+      process(msg);
+    }
+  }
 };
 
 template <size_t QUEUE_SIZE, size_t BUFFER_SIZE, size_t ALLOCATOR_SIZE>

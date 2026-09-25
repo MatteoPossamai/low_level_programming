@@ -80,3 +80,20 @@ set(SANITIZERS
 )
 target_compile_options(allocator_tests PRIVATE ${SANITIZERS})
 target_link_options(allocator_tests PRIVATE ${SANITIZERS})
+
+add_executable(engine_tests tests/engine_test.cpp src/message.cpp)
+target_include_directories(engine_tests PRIVATE src)
+target_link_libraries(engine_tests PRIVATE GTest::gtest_main)
+target_compile_options(engine_tests PRIVATE
+    -O1 -g -Wall -Wextra -Wshadow ${SANITIZERS}
+)
+target_link_options(engine_tests PRIVATE ${SANITIZERS})
+
+add_executable(bench_engine benchmark/engine_bench.cpp)
+target_link_libraries(bench_engine PRIVATE
+    engine
+    benchmark::benchmark
+)
+target_compile_options(bench_engine PRIVATE
+    -O2 -g -Wall -Wextra -Wshadow
+)
