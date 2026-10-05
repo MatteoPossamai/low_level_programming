@@ -142,8 +142,20 @@ public:
   }
 
   size_t send_msg(OutboundMessage message, size_t client_fd) {
-    ssize_t w = write(client_fd, message.bytes.data(), kMaxResSize);
-    if (w == 0) {
+    size_t size = 0;
+    switch (message.bytes.data()[0]) {
+    case static_cast<std::byte>('A'):
+      size = AcceptResponseView::WIRE_SIZE;
+      break;
+    case static_cast<std::byte>('C'):
+      size = CancelledResponseView::WIRE_SIZE;
+      break;
+    case static_cast<std::byte>('E'):
+      size = ExecutedResponseView::WIRE_SIZE;
+      break;
+    }
+    ssize_t w = write(client_fd, message.bytes.data(), size);
+    if (w <= 0) {
       perror("Cannot send back echo");
       return 1;
     }

@@ -2,11 +2,14 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <arpa/inet.h>
 #include <array>
 #include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <set>
+#include <span>
 #include <string>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -45,8 +48,8 @@ struct ClientSockets {
 bool send_all(int fd, const char *data, std::size_t size) {
   std::size_t sent_total = 0;
   while (sent_total < size) {
-    const ssize_t sent = send(fd, data + sent_total, size - sent_total,
-                              MSG_NOSIGNAL);
+    const ssize_t sent =
+        send(fd, data + sent_total, size - sent_total, MSG_NOSIGNAL);
     if (sent < 0 && errno == EINTR)
       continue;
     if (sent <= 0)
@@ -56,11 +59,52 @@ bool send_all(int fd, const char *data, std::size_t size) {
   return true;
 }
 
+bool receive_all(int fd, char *data, std::size_t size) {
+  std::size_t received_total = 0;
+  while (received_total < size) {
+    const ssize_t received =
+        recv(fd, data + received_total, size - received_total, 0);
+    if (received < 0 && errno == EINTR)
+      continue;
+    if (received <= 0)
+      return false;
+    received_total += static_cast<std::size_t>(received);
+  }
+  return true;
+}
+
 std::array<char, kDemoMessageSize> make_message(int port, int number) {
   std::array<char, kDemoMessageSize> message{};
-  std::snprintf(message.data(), message.size(), "port=%d msg=%d", port,
-                number);
+  std::snprintf(message.data(), message.size(), "port=%d msg=%d", port, number);
   return message;
+}
+
+template <typename Backend>
+void sends_response_to_the_client(std::span<const std::byte> response,
+                                  std::size_t expected_size) {
+  Backend device;
+  ClientSockets client;
+  const int client_fd = connect_to_port(START_PORT_RANGE);
+  ASSERT_GE(client_fd, 0);
+  client.fds.push_back(client_fd);
+
+  const auto request_bytes = make_message(START_PORT_RANGE, 1);
+  ASSERT_TRUE(send_all(client_fd, request_bytes.data(), request_bytes.size()));
+  const InboundMessage request = device.receive_msg();
+  ASSERT_GE(request.client_fd, 0);
+
+  OutboundMessage outbound{};
+  std::copy(response.begin(), response.end(), outbound.bytes.begin());
+  ASSERT_EQ(device.send_msg(outbound, request.client_fd), 0u);
+
+  std::vector<char> actual(expected_size);
+  ASSERT_TRUE(receive_all(client_fd, actual.data(), actual.size()));
+  EXPECT_EQ(std::memcmp(actual.data(), response.data(), expected_size), 0);
+
+  char extra_byte;
+  const ssize_t extra = recv(client_fd, &extra_byte, 1, MSG_DONTWAIT);
+  EXPECT_EQ(extra, -1) << "response contained bytes past its wire length";
+  EXPECT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK);
 }
 
 // This is the shared inbound-backend contract. An io_uring backend can be
@@ -96,7 +140,8 @@ template <typename Backend> void receives_messages_from_every_port() {
   EXPECT_EQ(received, expected);
 }
 
-template <typename Backend> void receives_repeated_messages_on_one_connection() {
+template <typename Backend>
+void receives_repeated_messages_on_one_connection() {
   Backend device;
   ClientSockets client;
   const int fd = connect_to_port(START_PORT_RANGE);
@@ -114,7 +159,8 @@ template <typename Backend> void receives_repeated_messages_on_one_connection() 
   }
 }
 
-template <typename Backend> void ignores_a_client_that_disconnects_without_data() {
+template <typename Backend>
+void ignores_a_client_that_disconnects_without_data() {
   Backend device;
   const int empty_client = connect_to_port(START_PORT_RANGE);
   ASSERT_GE(empty_client, 0);
@@ -143,6 +189,46 @@ TEST(NetworkDeviceEpoll, ReceivesRepeatedMessagesOnOneConnection) {
 
 TEST(NetworkDeviceEpoll, IgnoresAClientThatDisconnectsWithoutData) {
   ignores_a_client_that_disconnects_without_data<NetworkDeviceEpoll<32>>();
+}
+
+TEST(NetworkDeviceEpoll, SendsAcceptedResponse) {
+  const auto response = AcceptResponseBuilder()
+                            .Timestamp(1)
+                            .UserRefNum(2)
+                            .Side(SideEnum::B)
+                            .Quantity(10)
+                            .Symbol("TEST")
+                            .Price(12345)
+                            .TimeInForce(TimeInForceEnum::Day)
+                            .Display(DisplayEnum::Y)
+                            .OrderReferenceNumber(3)
+                            .Capacity('P')
+                            .InterMarketSweepElig(InterMarketSweepEligEnum::N)
+                            .CrossType(CrossTypeEnum::N)
+                            .OrderState(OrderStateEnum::L)
+                            .ClOrdID("test");
+  sends_response_to_the_client<NetworkDeviceEpoll<32>>(
+      response.bytes(), AcceptResponseView::WIRE_SIZE);
+}
+
+TEST(NetworkDeviceEpoll, SendsCanceledResponse) {
+  const auto response =
+      CancelledResponseBuilder().Timestamp(1).UserRefNum(2).Quantity(10).Reason(
+          'U');
+  sends_response_to_the_client<NetworkDeviceEpoll<32>>(
+      response.bytes(), CancelledResponseView::WIRE_SIZE);
+}
+
+TEST(NetworkDeviceEpoll, SendsExecutedResponse) {
+  const auto response = ExecutedResponseBuilder()
+                            .Timestamp(1)
+                            .UserRefNum(2)
+                            .Quantity(10)
+                            .Price(12345)
+                            .LiquidityFlag('A')
+                            .MatchNumber(3);
+  sends_response_to_the_client<NetworkDeviceEpoll<32>>(
+      response.bytes(), ExecutedResponseView::WIRE_SIZE);
 }
 
 } // namespace
