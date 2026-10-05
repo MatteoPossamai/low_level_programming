@@ -118,3 +118,10 @@ add_test(NAME network_device_tests COMMAND network_device_tests)
 set_tests_properties(network_device_tests PROPERTIES TIMEOUT 15)
 add_test(NAME complete_flow_tests COMMAND complete_flow_tests)
 set_tests_properties(complete_flow_tests PROPERTIES TIMEOUT 15)
+
+add_executable(main src/main.cpp src/message.cpp)
+target_compile_options(main PRIVATE
+  -O2 -g -Wall -Wextra -Wshadow -fsanitize=thread
+)
+target_link_options(main PRIVATE -fsanitize=thread)
+target_include_directories(main PRIVATE src)
