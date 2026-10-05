@@ -42,14 +42,14 @@ InboundMessage enter(uint32_t acct, uint32_t urn, SideEnum side, uint32_t qty,
                .Quantity(qty)
                .Symbol("AAPL")
                .Price(price);
-  InboundMessage m{acct, {}};
+  InboundMessage m{acct, 0, {}};
   std::memcpy(m.bytes.data(), b.bytes().data(), b.bytes().size());
   return m;
 }
 
 InboundMessage cancel(uint32_t acct, uint32_t urn) {
   auto b = CancelRequestBuilder().UserRefNum(urn).Quantity(0);
-  InboundMessage m{acct, {}};
+  InboundMessage m{acct, 0, {}};
   std::memcpy(m.bytes.data(), b.bytes().data(), b.bytes().size());
   return m;
 }
@@ -82,8 +82,7 @@ Traffic generate(uint64_t depth, uint64_t n_ops, uint64_t seed) {
     else
       price = buy ? MID - away + cross_d(rng) : MID + away - cross_d(rng);
     live.emplace_back(acct, urn);
-    return enter(acct, urn, buy ? SideEnum::B : SideEnum::S, qty_d(rng),
-                 price);
+    return enter(acct, urn, buy ? SideEnum::B : SideEnum::S, qty_d(rng), price);
   };
 
   Traffic t;

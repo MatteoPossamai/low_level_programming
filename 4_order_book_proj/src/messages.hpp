@@ -434,8 +434,9 @@ using UOUCHMessage =
                  CancelledResponseView, ExecutedResponseView>;
 // Queue payloads: raw wire bytes, owned by value, sized for the largest type.
 // Wrap with decode() / a View on the consumer side.
-using OUCHMessageIn = std::array<
-    std::byte, std::max(EnterRequestView::WIRE_SIZE, CancelRequestView::WIRE_SIZE)>;
+using OUCHMessageIn =
+    std::array<std::byte, std::max(EnterRequestView::WIRE_SIZE,
+                                   CancelRequestView::WIRE_SIZE)>;
 using OUCHMessageOut =
     std::array<std::byte, std::max({AcceptResponseView::WIRE_SIZE,
                                     CancelledResponseView::WIRE_SIZE,
@@ -445,6 +446,7 @@ using OUCHMessageOut =
 // the connection they arrived on. The account is not part of the message.
 struct InboundMessage {
   uint32_t account;
+  int client_fd;
   OUCHMessageIn bytes;
 };
 

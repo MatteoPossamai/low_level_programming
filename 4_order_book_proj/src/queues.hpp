@@ -23,6 +23,7 @@ public:
   mpsc_queue &operator=(mpsc_queue &&) = delete;
   void enqueue(T data);
   void dequeue(T &data);
+  bool empty() { return enqueue_ptr_ == dequeue_ptr_; };
 };
 
 template <typename T, size_t S> class spsc_queue {
@@ -46,6 +47,7 @@ public:
   spsc_queue &operator=(spsc_queue &&) = delete;
   void enqueue(T data);
   void dequeue(T &data);
+  bool empty() { return enqueue_ptr_ == dequeue_ptr_; };
 };
 
 #include "queues_impl.hpp"

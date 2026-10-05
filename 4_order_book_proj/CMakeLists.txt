@@ -97,3 +97,14 @@ target_link_libraries(bench_engine PRIVATE
 target_compile_options(bench_engine PRIVATE
     -O2 -g -Wall -Wextra -Wshadow
 )
+
+add_executable(network_device_tests tests/network_device_test.cpp)
+target_include_directories(network_device_tests PRIVATE src)
+target_link_libraries(network_device_tests PRIVATE GTest::gtest_main)
+target_compile_options(network_device_tests PRIVATE
+    -O0 -g -Wall -Wextra -Wshadow
+)
+
+enable_testing()
+add_test(NAME network_device_tests COMMAND network_device_tests)
+set_tests_properties(network_device_tests PROPERTIES TIMEOUT 15)

@@ -12,6 +12,12 @@ is done, the message is put into a Queue.
 There are different connections, and all of the workflows are independent
 from one another (reading message, serialize, put into queue).
 
+For this POC, the receiver assumes one successful `read()` contains one whole
+OUCH message. It does not buffer partial messages or split multiple messages
+returned by one read. This is a deliberate simplification for the project;
+TCP itself does not guarantee those read boundaries. The network-device tests
+therefore cover complete messages only.
+
 ### Matching Engine
 
 Here is where messages coming in from the network are then put into the match to
