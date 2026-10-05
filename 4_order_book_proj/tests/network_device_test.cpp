@@ -102,11 +102,12 @@ void sends_response_to_the_client(std::span<const std::byte> response,
   const auto request_bytes = make_message(START_PORT_RANGE, 1);
   ASSERT_TRUE(send_all(client_fd, request_bytes.data(), request_bytes.size()));
   const InboundMessage request = receive_one(device, queue);
-  ASSERT_GE(request.client_fd, 0);
+  ASSERT_GT(request.account, 0u);
 
   OutboundMessage outbound{};
+  outbound.account = request.account;
   std::copy(response.begin(), response.end(), outbound.bytes.begin());
-  ASSERT_EQ(device.send_msg(outbound, request.client_fd), 0u);
+  ASSERT_EQ(device.send_msg(outbound), 0u);
 
   std::vector<char> actual(expected_size);
   ASSERT_TRUE(receive_all(client_fd, actual.data(), actual.size()));
@@ -144,7 +145,7 @@ template <typename Backend> void receives_messages_from_every_port() {
   std::set<std::string> received;
   for (std::size_t i = 0; i < expected.size(); ++i) {
     const InboundMessage message = receive_one(device, queue);
-    EXPECT_GE(message.client_fd, 0);
+    EXPECT_GE(message.account, 0);
     received.emplace(reinterpret_cast<const char *>(message.bytes.data()),
                      kDemoMessageSize);
   }

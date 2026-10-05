@@ -37,14 +37,14 @@ InboundMessage enter(uint32_t acct, uint32_t urn, SideEnum side, uint32_t qty,
                .Quantity(qty)
                .Symbol("AAPL")
                .Price(price);
-  InboundMessage m{acct, 0, {}};
+  InboundMessage m{acct, {}};
   std::memcpy(m.bytes.data(), b.bytes().data(), b.bytes().size());
   return m;
 }
 
 InboundMessage cancel(uint32_t acct, uint32_t urn, uint32_t qty) {
   auto b = CancelRequestBuilder().UserRefNum(urn).Quantity(qty);
-  InboundMessage m{acct, 0, {}};
+  InboundMessage m{acct, {}};
   std::memcpy(m.bytes.data(), b.bytes().data(), b.bytes().size());
   return m;
 }

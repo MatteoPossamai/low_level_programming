@@ -446,7 +446,6 @@ using OUCHMessageOut =
 // the connection they arrived on. The account is not part of the message.
 struct InboundMessage {
   uint32_t account;
-  int client_fd;
   OUCHMessageIn bytes;
 };
 

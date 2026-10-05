@@ -3,6 +3,7 @@
 #include "messages.hpp"
 #include "queues.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <netinet/in.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -123,9 +124,7 @@ public:
         } else {
           // Put message in queue
           InboundMessage msg;
-          msg.client_fd = fd;
-          msg.account = fd; // For simplicity, assume that FD is always the same
-                            // as account
+          msg.account = static_cast<uint32_t>(fd);
           ssize_t r = read(fd, msg.bytes.data(), msg.bytes.size());
           if (r <= 0) {
             // 0 = peer closed. close() removes the fd from epoll for us.
@@ -152,7 +151,7 @@ public:
       break;
     }
     ssize_t w =
-        write(0, message.bytes.data(), size); // TODO: fd to get correctly
+        write(static_cast<int>(message.account), message.bytes.data(), size);
     if (w <= 0) {
       perror("Cannot send back echo");
       return 1;
