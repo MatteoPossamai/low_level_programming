@@ -21,18 +21,19 @@ constexpr std::size_t kMaxResSize =
               ExecutedResponseView::WIRE_SIZE});
 
 class NetworkDevice {
-  virtual InboundMessage receive_msg() = 0;
-  virtual size_t send_msg(OutboundMessage, size_t) = 0;
+  virtual void receive_msg() = 0;
+  virtual size_t send_msg(OutboundMessage) = 0;
 };
 
 template <size_t QUEUE_SIZE> class NetworkDeviceEpoll : public NetworkDevice {
   int epfd = 0;
   std::unordered_set<int> fds;
   struct epoll_event events[MAX_EVENTS_PER_ITER];
-  spsc_queue<InboundMessage, QUEUE_SIZE> queue;
+  spsc_queue<InboundMessage, QUEUE_SIZE> &queue;
 
 public:
-  NetworkDeviceEpoll() {
+  NetworkDeviceEpoll(spsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue_in)
+      : queue(incoming_queue_in) {
     epfd = epoll_create1(0);
     if (epfd < 0) {
       perror("epoll_create1");
@@ -91,12 +92,11 @@ public:
     }
   }
 
-  InboundMessage receive_msg() {
+  void receive_msg() {
     while (queue.empty()) {
       int n = epoll_wait(epfd, events, MAX_EVENTS_PER_ITER, -1);
       if (n < 0) {
         perror("epoll_wait");
-        return InboundMessage{};
       }
 
       for (int i = 0; i < n; i++) {
@@ -136,12 +136,9 @@ public:
         }
       }
     }
-    InboundMessage message_in;
-    queue.dequeue(message_in);
-    return message_in;
   }
 
-  size_t send_msg(OutboundMessage message, size_t client_fd) {
+  size_t send_msg(OutboundMessage message) {
     size_t size = 0;
     switch (message.bytes.data()[0]) {
     case static_cast<std::byte>('A'):
@@ -154,7 +151,8 @@ public:
       size = ExecutedResponseView::WIRE_SIZE;
       break;
     }
-    ssize_t w = write(client_fd, message.bytes.data(), size);
+    ssize_t w =
+        write(0, message.bytes.data(), size); // TODO: fd to get correctly
     if (w <= 0) {
       perror("Cannot send back echo");
       return 1;

@@ -16,7 +16,7 @@ class Engine {
   constexpr static uint64_t MARKETPRICE = 0x7FFFFFFF;
   constexpr static uint64_t MAXLIMIT = 1'999'999'9900;
 
-  mpsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue;
+  spsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue;
   spsc_queue<OutboundMessage, QUEUE_SIZE> &outgoing_queue;
 
   struct OrderBlock {
@@ -118,7 +118,7 @@ class Engine {
   uint64_t insert_sell_order(uint32_t account, EnterRequestView order);
 
 public:
-  Engine(mpsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue_in,
+  Engine(spsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue_in,
          spsc_queue<OutboundMessage, QUEUE_SIZE> &outgoing_queue_in)
       : incoming_queue(incoming_queue_in), outgoing_queue(outgoing_queue_in) {}
   // Blocks live in allocator's mmap region, released when allocator dies.

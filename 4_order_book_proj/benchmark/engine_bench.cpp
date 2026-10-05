@@ -10,7 +10,7 @@
 // Book is warmed up to `depth` resting orders before timing starts.
 //
 // Measured: engine core only (decode, match, book update, outbound encode and
-// enqueue). Not measured: inbound MPSC hop, sockets. Those are Block 4/6.
+// enqueue). Not measured: inbound SPSC hop, sockets. Those are Block 4/6.
 
 #include "engine.hpp"
 
@@ -115,7 +115,7 @@ void BM_Engine(benchmark::State &state) {
   const uint64_t n_ops = state.range(1);
   const Traffic traffic = generate(depth, n_ops, /*seed=*/42);
 
-  auto in = std::make_unique<mpsc_queue<InboundMessage, QUEUE>>();
+  auto in = std::make_unique<spsc_queue<InboundMessage, QUEUE>>();
   auto out = std::make_unique<spsc_queue<OutboundMessage, QUEUE>>();
 
   uint64_t out_msgs = 0;

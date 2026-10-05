@@ -218,7 +218,7 @@ std::vector<Scenario> scenarios() {
 }
 
 template <typename EngineT> void run_scenario(const Scenario &sc) {
-  auto in = std::make_unique<mpsc_queue<InboundMessage, QUEUE>>();
+  auto in = std::make_unique<spsc_queue<InboundMessage, QUEUE>>();
   auto out = std::make_unique<spsc_queue<OutboundMessage, QUEUE>>();
   auto engine = std::make_unique<EngineT>(*in, *out);
 
@@ -266,7 +266,7 @@ TEST(EngineRandom, OutputIsConsistent) {
   constexpr int N = 200'000;
   constexpr uint32_t ACCOUNTS = 8;
 
-  auto in = std::make_unique<mpsc_queue<InboundMessage, QUEUE>>();
+  auto in = std::make_unique<spsc_queue<InboundMessage, QUEUE>>();
   auto out = std::make_unique<spsc_queue<OutboundMessage, QUEUE>>();
   auto engine = std::make_unique<Engine<QUEUE, PRICES, 1 << 16>>(*in, *out);
 

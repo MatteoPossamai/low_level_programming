@@ -19,6 +19,8 @@ namespace {
 
 constexpr int kMessagesPerPort = 3;
 constexpr std::size_t kDemoMessageSize = 16;
+constexpr std::size_t kQueueSize = 32;
+using TestInboundQueue = spsc_queue<InboundMessage, kQueueSize>;
 
 int connect_to_port(int port) {
   const int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -80,9 +82,18 @@ std::array<char, kDemoMessageSize> make_message(int port, int number) {
 }
 
 template <typename Backend>
+InboundMessage receive_one(Backend &device, TestInboundQueue &queue) {
+  device.receive_msg();
+  InboundMessage message{};
+  queue.dequeue(message);
+  return message;
+}
+
+template <typename Backend>
 void sends_response_to_the_client(std::span<const std::byte> response,
                                   std::size_t expected_size) {
-  Backend device;
+  TestInboundQueue queue;
+  Backend device(queue);
   ClientSockets client;
   const int client_fd = connect_to_port(START_PORT_RANGE);
   ASSERT_GE(client_fd, 0);
@@ -90,7 +101,7 @@ void sends_response_to_the_client(std::span<const std::byte> response,
 
   const auto request_bytes = make_message(START_PORT_RANGE, 1);
   ASSERT_TRUE(send_all(client_fd, request_bytes.data(), request_bytes.size()));
-  const InboundMessage request = device.receive_msg();
+  const InboundMessage request = receive_one(device, queue);
   ASSERT_GE(request.client_fd, 0);
 
   OutboundMessage outbound{};
@@ -110,7 +121,8 @@ void sends_response_to_the_client(std::span<const std::byte> response,
 // This is the shared inbound-backend contract. An io_uring backend can be
 // checked by calling this same helper with its backend type.
 template <typename Backend> void receives_messages_from_every_port() {
-  Backend device;
+  TestInboundQueue queue;
+  Backend device(queue);
   ClientSockets clients;
   std::set<std::string> expected;
 
@@ -131,7 +143,7 @@ template <typename Backend> void receives_messages_from_every_port() {
   // noise to this test of successful inbound payload delivery.
   std::set<std::string> received;
   for (std::size_t i = 0; i < expected.size(); ++i) {
-    const InboundMessage message = device.receive_msg();
+    const InboundMessage message = receive_one(device, queue);
     EXPECT_GE(message.client_fd, 0);
     received.emplace(reinterpret_cast<const char *>(message.bytes.data()),
                      kDemoMessageSize);
@@ -142,7 +154,8 @@ template <typename Backend> void receives_messages_from_every_port() {
 
 template <typename Backend>
 void receives_repeated_messages_on_one_connection() {
-  Backend device;
+  TestInboundQueue queue;
+  Backend device(queue);
   ClientSockets client;
   const int fd = connect_to_port(START_PORT_RANGE);
   ASSERT_GE(fd, 0);
@@ -152,7 +165,7 @@ void receives_repeated_messages_on_one_connection() {
     const auto payload = make_message(START_PORT_RANGE, number);
     ASSERT_TRUE(send_all(fd, payload.data(), payload.size()));
 
-    const InboundMessage received = device.receive_msg();
+    const InboundMessage received = receive_one(device, queue);
     EXPECT_EQ(std::string(reinterpret_cast<const char *>(received.bytes.data()),
                           payload.size()),
               std::string(payload.data(), payload.size()));
@@ -161,7 +174,8 @@ void receives_repeated_messages_on_one_connection() {
 
 template <typename Backend>
 void ignores_a_client_that_disconnects_without_data() {
-  Backend device;
+  TestInboundQueue queue;
+  Backend device(queue);
   const int empty_client = connect_to_port(START_PORT_RANGE);
   ASSERT_GE(empty_client, 0);
   close(empty_client);
@@ -173,22 +187,22 @@ void ignores_a_client_that_disconnects_without_data() {
   const auto payload = make_message(START_PORT_RANGE, 1);
   ASSERT_TRUE(send_all(fd, payload.data(), payload.size()));
 
-  const InboundMessage received = device.receive_msg();
+  const InboundMessage received = receive_one(device, queue);
   EXPECT_EQ(std::string(reinterpret_cast<const char *>(received.bytes.data()),
                         payload.size()),
             std::string(payload.data(), payload.size()));
 }
 
 TEST(NetworkDeviceEpoll, ReceivesThreeMessagesFromEachListeningPort) {
-  receives_messages_from_every_port<NetworkDeviceEpoll<32>>();
+  receives_messages_from_every_port<NetworkDeviceEpoll<kQueueSize>>();
 }
 
 TEST(NetworkDeviceEpoll, ReceivesRepeatedMessagesOnOneConnection) {
-  receives_repeated_messages_on_one_connection<NetworkDeviceEpoll<32>>();
+  receives_repeated_messages_on_one_connection<NetworkDeviceEpoll<kQueueSize>>();
 }
 
 TEST(NetworkDeviceEpoll, IgnoresAClientThatDisconnectsWithoutData) {
-  ignores_a_client_that_disconnects_without_data<NetworkDeviceEpoll<32>>();
+  ignores_a_client_that_disconnects_without_data<NetworkDeviceEpoll<kQueueSize>>();
 }
 
 TEST(NetworkDeviceEpoll, SendsAcceptedResponse) {
