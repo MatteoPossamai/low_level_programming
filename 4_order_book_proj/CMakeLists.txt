@@ -105,6 +105,16 @@ target_compile_options(network_device_tests PRIVATE
     -O0 -g -Wall -Wextra -Wshadow
 )
 
+add_executable(complete_flow_tests tests/test_complete_flow.cpp src/message.cpp)
+target_include_directories(complete_flow_tests PRIVATE src)
+target_link_libraries(complete_flow_tests PRIVATE GTest::gtest_main)
+target_compile_options(complete_flow_tests PRIVATE
+    -O1 -g -Wall -Wextra -Wshadow ${SANITIZERS}
+)
+target_link_options(complete_flow_tests PRIVATE ${SANITIZERS})
+
 enable_testing()
 add_test(NAME network_device_tests COMMAND network_device_tests)
 set_tests_properties(network_device_tests PROPERTIES TIMEOUT 15)
+add_test(NAME complete_flow_tests COMMAND complete_flow_tests)
+set_tests_properties(complete_flow_tests PROPERTIES TIMEOUT 15)

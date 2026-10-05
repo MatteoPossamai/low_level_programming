@@ -14,13 +14,14 @@ auto engine = Engine<MAX_QUEUE_SIZE, MAX_ORDER_BUFFER_SIZE, ALLOCATOR_SIZE>(
     incoming_queue, outgoing_queue);
 auto network_device = NetworkDeviceEpoll<MAX_QUEUE_SIZE>(incoming_queue);
 
-void engine_thread() {
+void engine_thread() { engine.run(); }
+
+void network_reader_thread() {
+
   while (1) {
     network_device.receive_msg();
   }
 }
-
-void network_reader_thread() {}
 
 void network_writer_thread() {
   OutboundMessage msg;
