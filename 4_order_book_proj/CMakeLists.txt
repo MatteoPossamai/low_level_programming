@@ -143,3 +143,12 @@ target_include_directories(main PRIVATE src)
 
 find_package(PkgConfig)
 target_link_libraries(main PRIVATE uring)
+
+add_executable(internal_engine_bench benchmark/internal_engine_bench_flow.cpp)
+target_include_directories(internal_engine_bench  PRIVATE src)
+target_link_libraries(internal_engine_bench PRIVATE
+    engine
+)
+target_compile_options(internal_engine_bench  PRIVATE
+  -O2 -g -Wall -Wextra -Wshadow
+)
