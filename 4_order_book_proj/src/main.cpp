@@ -24,15 +24,17 @@ void network_reader_thread() {
 }
 
 void network_writer_thread() {
-  OutboundMessage msg;
-  outgoing_queue.dequeue(msg);
-  network_device.send_msg(msg);
+  while (1) {
+    OutboundMessage msg;
+    outgoing_queue.dequeue(msg);
+    network_device.send_msg(msg);
+  }
 }
 
 int main() {
   std::thread network_writer_th(network_writer_thread);
   std::thread engine_th(engine_thread);
-  std::thread network_reader_th(network_writer_thread);
+  std::thread network_reader_th(network_reader_thread);
 
   network_writer_th.join();
   engine_th.join();

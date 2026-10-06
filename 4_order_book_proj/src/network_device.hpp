@@ -94,44 +94,43 @@ public:
   }
 
   void receive_msg() {
-    while (queue.empty()) {
-      int n = epoll_wait(epfd, events, MAX_EVENTS_PER_ITER, -1);
-      if (n < 0) {
-        perror("epoll_wait");
-      }
+    int n = epoll_wait(epfd, events, MAX_EVENTS_PER_ITER, -1);
+    if (n < 0) {
+      perror("epoll_wait");
+      return;
+    }
 
-      for (int i = 0; i < n; i++) {
-        int fd = events[i].data.fd;
-        if (!(events[i].events & EPOLLIN))
+    for (int i = 0; i < n; i++) {
+      int fd = events[i].data.fd;
+      if (!(events[i].events & EPOLLIN))
+        continue;
+
+      if (fds.contains(fd)) {
+        // File descriptor of new client
+        int client_fd = accept4(fd, nullptr, nullptr, SOCK_NONBLOCK);
+        if (client_fd < 0) {
+          perror("accept4");
           continue;
+        }
 
-        if (fds.contains(fd)) {
-          // File descriptor of new client
-          int client_fd = accept4(fd, nullptr, nullptr, SOCK_NONBLOCK);
-          if (client_fd < 0) {
-            perror("accept4");
-            continue;
-          }
-
-          struct epoll_event cev;
-          cev.events = EPOLLIN;
-          cev.data.fd = client_fd;
-          if (epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &cev) < 0) {
-            perror("epoll_ctl client");
-            close(client_fd);
-            continue;
-          }
+        struct epoll_event cev;
+        cev.events = EPOLLIN;
+        cev.data.fd = client_fd;
+        if (epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &cev) < 0) {
+          perror("epoll_ctl client");
+          close(client_fd);
+          continue;
+        }
+      } else {
+        // Put message in queue
+        InboundMessage msg;
+        msg.account = static_cast<uint32_t>(fd);
+        ssize_t r = read(fd, msg.bytes.data(), msg.bytes.size());
+        if (r <= 0) {
+          // 0 = peer closed. close() removes the fd from epoll for us.
+          close(fd);
         } else {
-          // Put message in queue
-          InboundMessage msg;
-          msg.account = static_cast<uint32_t>(fd);
-          ssize_t r = read(fd, msg.bytes.data(), msg.bytes.size());
-          if (r <= 0) {
-            // 0 = peer closed. close() removes the fd from epoll for us.
-            close(fd);
-          } else {
-            queue.enqueue(std::move(msg));
-          }
+          queue.enqueue(std::move(msg));
         }
       }
     }

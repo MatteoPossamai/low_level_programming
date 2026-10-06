@@ -113,12 +113,17 @@ target_compile_options(complete_flow_tests PRIVATE
 )
 target_link_options(complete_flow_tests PRIVATE ${SANITIZERS})
 
+add_executable(order_flow_demo tests/complete_flow_demo.cpp)
+target_include_directories(order_flow_demo PRIVATE src)
+target_compile_options(order_flow_demo PRIVATE
+    -O0 -g -Wall -Wextra -Wshadow
+)
+
 enable_testing()
 add_test(NAME network_device_tests COMMAND network_device_tests)
 set_tests_properties(network_device_tests PROPERTIES TIMEOUT 15)
 add_test(NAME complete_flow_tests COMMAND complete_flow_tests)
 set_tests_properties(complete_flow_tests PROPERTIES TIMEOUT 15)
-
 add_executable(main src/main.cpp src/message.cpp)
 target_compile_options(main PRIVATE
   -O2 -g -Wall -Wextra -Wshadow -fsanitize=thread
