@@ -4,11 +4,15 @@
 #include "queues.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <liburing.h>
+#include <mutex>
 #include <netinet/in.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <unordered_set>
+#include <vector>
 
 #define START_PORT_RANGE 49152
 #define END_PORT_RANGE 49155
@@ -22,8 +26,30 @@ constexpr std::size_t kMaxResSize =
               ExecutedResponseView::WIRE_SIZE});
 
 class NetworkDevice {
+public:
+  int setup_listening_socket(int port) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+      perror("socket");
+      exit(1);
+    }
+    int enable = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(sock, (sockaddr *)&addr, sizeof(addr)) < 0 ||
+        listen(sock, 10) < 0) {
+      perror("bind/listen");
+      exit(1);
+    }
+    return sock;
+  }
   virtual void receive_msg() = 0;
-  virtual size_t send_msg(OutboundMessage) = 0;
+  virtual size_t send_msg(OutboundMessage message) = 0;
 };
 
 template <size_t QUEUE_SIZE> class NetworkDeviceEpoll : public NetworkDevice {
@@ -43,34 +69,7 @@ public:
 
     for (int i = START_PORT_RANGE; i <= END_PORT_RANGE; i++) {
       // Setup of the sockets on the range of address used for trading
-
-      // 1. Create socket
-      int listen_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
-      if (listen_fd < 0) {
-        perror("socket DEVICE");
-        exit(1);
-      }
-      // 2. DO not allow socket to fail on restart
-      int opt = 1;
-      setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-      // 3. Bind the port
-      struct sockaddr_in addr;
-      memset(&addr, 0, sizeof(addr));
-      addr.sin_family = AF_INET;
-      addr.sin_addr.s_addr = htonl(INADDR_ANY); // all interfaces
-      addr.sin_port = htons(i);                 // host-to-network byte order
-
-      if (bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        perror("bind");
-        exit(1);
-      }
-
-      // 4. Listen
-      if (listen(listen_fd, SOMAXCONN) < 0) {
-        perror("listen");
-        exit(1);
-      }
+      int listen_fd = setup_listening_socket(i);
 
       struct epoll_event ev;
       ev.events = EPOLLIN;
@@ -159,4 +158,151 @@ public:
   }
 };
 
-// class NetworkDeviceIOUring : public NetworkDevice {};
+template <size_t QUEUE_SIZE> class NetworkDeviceIOUring : public NetworkDevice {
+  spsc_queue<InboundMessage, QUEUE_SIZE> &queue;
+  io_uring ring;
+  std::mutex submission_mutex;
+
+  enum class EventType { Accept, Read, Write };
+
+  struct Request {
+    EventType type;
+    int client_fd = -1;
+    int listen_fd = -1;
+    std::vector<char> buf;
+  };
+
+  void queue_accept(int listen_fd) {
+    auto req = std::make_unique<Request>(
+        Request{EventType::Accept, -1, listen_fd, {}});
+    io_uring_prep_accept(claim_sqe(std::move(req)), listen_fd, nullptr, nullptr,
+                         0);
+  }
+
+  io_uring_sqe *claim_sqe(std::unique_ptr<Request> req) {
+    io_uring_sqe *sqe = io_uring_get_sqe(&ring); // never null at this depth
+    io_uring_sqe_set_data(sqe, req.release());
+    return sqe;
+  }
+
+  void queue_read(int client_fd) {
+    auto req = std::make_unique<Request>(Request{
+        EventType::Read, client_fd, -1, std::vector<char>(kMaxReqSize)});
+    char *buf = req->buf.data();
+    io_uring_prep_recv(claim_sqe(std::move(req)), client_fd, buf, kMaxReqSize,
+                       0);
+  }
+
+  void queue_write(std::unique_ptr<Request> req, size_t len) {
+    req->type = EventType::Write;
+    int fd = req->client_fd;
+    char *buf = req->buf.data();
+    io_uring_prep_send(claim_sqe(std::move(req)), fd, buf, len, 0);
+  }
+
+public:
+  NetworkDeviceIOUring(
+      spsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue_in)
+      : queue(incoming_queue_in) {
+
+    io_uring_queue_init(QUEUE_SIZE, &ring, 0);
+
+    // Set up each Socket to be able to accepts connections
+    for (int i = START_PORT_RANGE; i <= END_PORT_RANGE; i++) {
+      int listen_fd = setup_listening_socket(i);
+      queue_accept(listen_fd);
+    }
+
+    // Submit all events to uring
+    io_uring_submit(&ring);
+  }
+  ~NetworkDeviceIOUring() { io_uring_queue_exit(&ring); }
+
+  void receive_msg() {
+    io_uring_cqe *cqe; // cqe == completed queue events
+    int ret = io_uring_wait_cqe(&ring, &cqe);
+    if (ret < 0) {
+      return;
+    }
+
+    // Pair with send_msg's unlock after submission. The kernel CQE transfers
+    // the request back to this thread, but TSan does not model that handoff.
+    std::unique_lock<std::mutex> lock(submission_mutex);
+
+    // Get result and consume event
+    std::unique_ptr<Request> req(
+        static_cast<Request *>(io_uring_cqe_get_data(cqe)));
+    int res = cqe->res;
+    io_uring_cqe_seen(&ring, cqe); // Marks event as consumed
+
+    if (res < 0) {
+      if (req->type == EventType::Accept) {
+        queue_accept(req->listen_fd);
+        io_uring_submit(&ring);
+      }
+    } else {
+      switch (req->type) {
+      case EventType::Accept: {
+        queue_accept(req->listen_fd);
+        queue_read(res);
+        io_uring_submit(&ring);
+      } break;
+      case EventType::Read:
+        if (res == 0) { // peer closed
+          // Skip close - assumption: if user goes away trading is over
+          //  close(req->client_fd);
+          break;
+        }
+        InboundMessage msg;
+        memcpy(msg.bytes.data(), req->buf.data(), res);
+        msg.account = static_cast<uint32_t>(req->client_fd);
+        lock.unlock();
+        queue.enqueue(std::move(msg));
+        lock.lock();
+        queue_read(req->client_fd);
+        io_uring_submit(&ring);
+        break;
+      case EventType::Write:
+        if (res == 0) {
+          // Skip close - assumption: if user goes away trading is over
+          // close(req->client_fd);
+          break;
+        }
+        if (static_cast<std::size_t>(res) < req->buf.size()) {
+          req->buf.erase(req->buf.begin(), req->buf.begin() + res);
+          const std::size_t remaining = req->buf.size();
+          queue_write(std::move(req), remaining);
+          io_uring_submit(&ring);
+        }
+        break;
+      }
+    }
+  }
+
+  size_t send_msg(OutboundMessage message) {
+    std::size_t size = 0;
+    switch (message.bytes[0]) {
+    case static_cast<std::byte>('A'):
+      size = AcceptResponseView::WIRE_SIZE;
+      break;
+    case static_cast<std::byte>('C'):
+      size = CancelledResponseView::WIRE_SIZE;
+      break;
+    case static_cast<std::byte>('E'):
+      size = ExecutedResponseView::WIRE_SIZE;
+      break;
+    default:
+      return 1;
+    }
+
+    const int fd = static_cast<int>(message.account);
+    std::lock_guard<std::mutex> lock(submission_mutex);
+    auto req = std::make_unique<Request>(
+        Request{EventType::Write, fd, -1, std::vector<char>(size)});
+    std::memcpy(req->buf.data(), message.bytes.data(), size);
+
+    queue_write(std::move(req), size);
+    const int submitted = io_uring_submit(&ring);
+    return submitted < 0 ? 1 : 0;
+  }
+};

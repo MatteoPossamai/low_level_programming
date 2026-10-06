@@ -130,3 +130,6 @@ target_compile_options(main PRIVATE
 )
 target_link_options(main PRIVATE -fsanitize=thread)
 target_include_directories(main PRIVATE src)
+
+find_package(PkgConfig)
+target_link_libraries(main PRIVATE uring)
