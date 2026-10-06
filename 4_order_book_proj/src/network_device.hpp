@@ -6,11 +6,13 @@
 #include <cstdint>
 #include <cstring>
 #include <liburing.h>
+#include <memory>
 #include <mutex>
 #include <netinet/in.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <stdexcept>
 #include <unordered_set>
 #include <vector>
 
@@ -59,7 +61,9 @@ template <size_t QUEUE_SIZE> class NetworkDeviceEpoll : public NetworkDevice {
   spsc_queue<InboundMessage, QUEUE_SIZE> &queue;
 
 public:
-  NetworkDeviceEpoll(spsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue_in)
+  NetworkDeviceEpoll(
+      spsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue_in,
+      int first_port = START_PORT_RANGE)
       : queue(incoming_queue_in) {
     epfd = epoll_create1(0);
     if (epfd < 0) {
@@ -67,7 +71,8 @@ public:
       exit(1);
     }
 
-    for (int i = START_PORT_RANGE; i <= END_PORT_RANGE; i++) {
+    for (int i = first_port; i < first_port + (END_PORT_RANGE - START_PORT_RANGE + 1);
+         i++) {
       // Setup of the sockets on the range of address used for trading
       int listen_fd = setup_listening_socket(i);
 
@@ -172,6 +177,9 @@ template <size_t QUEUE_SIZE> class NetworkDeviceIOUring : public NetworkDevice {
     std::vector<char> buf;
   };
 
+  std::unordered_set<Request *> inflight_requests;
+  std::vector<int> listening_fds;
+
   void queue_accept(int listen_fd) {
     auto req = std::make_unique<Request>(
         Request{EventType::Accept, -1, listen_fd, {}});
@@ -181,7 +189,10 @@ template <size_t QUEUE_SIZE> class NetworkDeviceIOUring : public NetworkDevice {
 
   io_uring_sqe *claim_sqe(std::unique_ptr<Request> req) {
     io_uring_sqe *sqe = io_uring_get_sqe(&ring); // never null at this depth
-    io_uring_sqe_set_data(sqe, req.release());
+    Request *raw_req = req.get();
+    io_uring_sqe_set_data(sqe, raw_req);
+    inflight_requests.insert(raw_req);
+    req.release();
     return sqe;
   }
 
@@ -202,21 +213,32 @@ template <size_t QUEUE_SIZE> class NetworkDeviceIOUring : public NetworkDevice {
 
 public:
   NetworkDeviceIOUring(
-      spsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue_in)
+      spsc_queue<InboundMessage, QUEUE_SIZE> &incoming_queue_in,
+      int first_port = START_PORT_RANGE)
       : queue(incoming_queue_in) {
 
-    io_uring_queue_init(QUEUE_SIZE, &ring, 0);
+    const int setup_result = io_uring_queue_init(QUEUE_SIZE, &ring, 0);
+    if (setup_result < 0)
+      throw std::runtime_error("io_uring_queue_init failed");
 
     // Set up each Socket to be able to accepts connections
-    for (int i = START_PORT_RANGE; i <= END_PORT_RANGE; i++) {
+    for (int i = first_port; i < first_port + (END_PORT_RANGE - START_PORT_RANGE + 1);
+         i++) {
       int listen_fd = setup_listening_socket(i);
+      listening_fds.push_back(listen_fd);
       queue_accept(listen_fd);
     }
 
     // Submit all events to uring
     io_uring_submit(&ring);
   }
-  ~NetworkDeviceIOUring() { io_uring_queue_exit(&ring); }
+  ~NetworkDeviceIOUring() {
+    io_uring_queue_exit(&ring);
+    for (Request *req : inflight_requests)
+      delete req;
+    for (int fd : listening_fds)
+      close(fd);
+  }
 
   void receive_msg() {
     io_uring_cqe *cqe; // cqe == completed queue events
@@ -232,6 +254,7 @@ public:
     // Get result and consume event
     std::unique_ptr<Request> req(
         static_cast<Request *>(io_uring_cqe_get_data(cqe)));
+    inflight_requests.erase(req.get());
     int res = cqe->res;
     io_uring_cqe_seen(&ring, cqe); // Marks event as consumed
 

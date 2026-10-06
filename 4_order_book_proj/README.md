@@ -77,6 +77,8 @@ cmake -S . -B build && cmake --build build
 ./build/allocator_tests                               # ASan+UBSan
 ./build/engine_tests                                  # ASan+UBSan
 ./build/bench_engine                                  # engine baseline
+./build/bench_network_device                          # epoll vs io_uring loopback round trip
+./build/network_device_tests                          # epoll and io_uring socket tests
 ./build/bench_codec
 ./build/bench_order_book                              # Block 1, everything
 ./build/bench_order_book --benchmark_filter=TickOff   # one structure
@@ -118,6 +120,10 @@ blocks from the pool allocator, orders keyed by `account << 32 | UserRefNum`.
 Price-time matching for limit and market orders, cancel as reduce-to-new-size.
 Emits OUCH Accepted / Executed (one per side, shared match number) / Canceled
 with the destination account. All tests pass under ASan+UBSan.
+
+**Transport** — epoll and io_uring loopback request/response paths are
+implemented and benchmarked. Results and limitations are in
+`benchmark/README.md`.
 
 **Baseline** (`bench_engine`, enter 50% / cancel 48% / market 2%, 100k
 messages per iteration, -O2, threads unpinned, CPU scaling on):

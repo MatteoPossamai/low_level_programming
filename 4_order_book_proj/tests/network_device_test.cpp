@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -12,13 +13,14 @@
 #include <span>
 #include <string>
 #include <sys/socket.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
 namespace {
 
 constexpr int kMessagesPerPort = 3;
-constexpr std::size_t kDemoMessageSize = 16;
+constexpr std::size_t kDemoMessageSize = 24;
 constexpr std::size_t kQueueSize = 32;
 using TestInboundQueue = spsc_queue<InboundMessage, kQueueSize>;
 
@@ -38,6 +40,27 @@ int connect_to_port(int port) {
   }
   return fd;
 }
+
+template <typename Backend> class DeviceReader {
+  Backend &device;
+  std::atomic<bool> stop{false};
+  std::thread worker;
+
+public:
+  explicit DeviceReader(Backend &device_in)
+      : device(device_in), worker([this] {
+          while (!stop.load(std::memory_order_acquire))
+            device.receive_msg();
+        }) {}
+
+  ~DeviceReader() {
+    stop.store(true, std::memory_order_release);
+    const int wake_fd = connect_to_port(START_PORT_RANGE);
+    if (wake_fd >= 0)
+      close(wake_fd);
+    worker.join();
+  }
+};
 
 struct ClientSockets {
   std::vector<int> fds;
@@ -83,7 +106,7 @@ std::array<char, kDemoMessageSize> make_message(int port, int number) {
 
 template <typename Backend>
 InboundMessage receive_one(Backend &device, TestInboundQueue &queue) {
-  device.receive_msg();
+  (void)device;
   InboundMessage message{};
   queue.dequeue(message);
   return message;
@@ -94,6 +117,7 @@ void sends_response_to_the_client(std::span<const std::byte> response,
                                   std::size_t expected_size) {
   TestInboundQueue queue;
   Backend device(queue);
+  DeviceReader reader(device);
   ClientSockets client;
   const int client_fd = connect_to_port(START_PORT_RANGE);
   ASSERT_GE(client_fd, 0);
@@ -124,6 +148,7 @@ void sends_response_to_the_client(std::span<const std::byte> response,
 template <typename Backend> void receives_messages_from_every_port() {
   TestInboundQueue queue;
   Backend device(queue);
+  DeviceReader reader(device);
   ClientSockets clients;
   std::set<std::string> expected;
 
@@ -157,6 +182,7 @@ template <typename Backend>
 void receives_repeated_messages_on_one_connection() {
   TestInboundQueue queue;
   Backend device(queue);
+  DeviceReader reader(device);
   ClientSockets client;
   const int fd = connect_to_port(START_PORT_RANGE);
   ASSERT_GE(fd, 0);
@@ -177,6 +203,7 @@ template <typename Backend>
 void ignores_a_client_that_disconnects_without_data() {
   TestInboundQueue queue;
   Backend device(queue);
+  DeviceReader reader(device);
   const int empty_client = connect_to_port(START_PORT_RANGE);
   ASSERT_GE(empty_client, 0);
   close(empty_client);
@@ -244,6 +271,82 @@ TEST(NetworkDeviceEpoll, SendsExecutedResponse) {
                             .MatchNumber(3);
   sends_response_to_the_client<NetworkDeviceEpoll<32>>(
       response.bytes(), ExecutedResponseView::WIRE_SIZE);
+}
+
+TEST(NetworkDeviceIOUring, InboundAndAsyncOutboundFlow) {
+  TestInboundQueue queue;
+  NetworkDeviceIOUring<kQueueSize> device(queue);
+  DeviceReader reader(device);
+  ClientSockets client;
+  std::set<std::string> expected;
+  std::set<std::string> received;
+
+  for (int port = START_PORT_RANGE; port <= END_PORT_RANGE; ++port) {
+    for (int number = 1; number <= kMessagesPerPort; ++number) {
+      const auto payload = make_message(port, number);
+      expected.emplace(payload.data(), payload.size());
+      const int fd = connect_to_port(port);
+      ASSERT_GE(fd, 0);
+      client.fds.push_back(fd);
+      ASSERT_TRUE(send_all(fd, payload.data(), payload.size()));
+    }
+  }
+
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    const InboundMessage message = receive_one(device, queue);
+    received.emplace(reinterpret_cast<const char *>(message.bytes.data()),
+                     kDemoMessageSize);
+  }
+  EXPECT_EQ(received, expected);
+
+  const int fd = client.fds.front();
+  const auto repeated = make_message(START_PORT_RANGE, 99);
+  ASSERT_TRUE(send_all(fd, repeated.data(), repeated.size()));
+  InboundMessage request = receive_one(device, queue);
+  EXPECT_EQ(std::string(reinterpret_cast<const char *>(request.bytes.data()),
+                        repeated.size()),
+            std::string(repeated.data(), repeated.size()));
+
+  const auto response = AcceptResponseBuilder()
+                            .Timestamp(1)
+                            .UserRefNum(2)
+                            .Side(SideEnum::B)
+                            .Quantity(10)
+                            .Symbol("TEST")
+                            .Price(12345)
+                            .TimeInForce(TimeInForceEnum::Day)
+                            .Display(DisplayEnum::Y)
+                            .OrderReferenceNumber(3)
+                            .Capacity('P')
+                            .InterMarketSweepElig(InterMarketSweepEligEnum::N)
+                            .CrossType(CrossTypeEnum::N)
+                            .OrderState(OrderStateEnum::L)
+                            .ClOrdID("test");
+
+  OutboundMessage outbound{};
+  outbound.account = request.account;
+  std::copy(response.bytes().begin(), response.bytes().end(),
+            outbound.bytes.begin());
+  ASSERT_EQ(device.send_msg(outbound), 0u);
+  std::array<char, AcceptResponseView::WIRE_SIZE> actual{};
+  ASSERT_TRUE(receive_all(fd, actual.data(), actual.size()));
+  EXPECT_EQ(std::memcmp(actual.data(), response.bytes().data(), actual.size()),
+            0);
+
+  const int empty_client = connect_to_port(START_PORT_RANGE);
+  ASSERT_GE(empty_client, 0);
+  close(empty_client);
+  const int replacement = connect_to_port(START_PORT_RANGE);
+  ASSERT_GE(replacement, 0);
+  client.fds.push_back(replacement);
+  const auto after_disconnect = make_message(START_PORT_RANGE, 100);
+  ASSERT_TRUE(send_all(replacement, after_disconnect.data(),
+                       after_disconnect.size()));
+  const InboundMessage replacement_message = receive_one(device, queue);
+  EXPECT_EQ(
+      std::string(reinterpret_cast<const char *>(replacement_message.bytes.data()),
+                  after_disconnect.size()),
+      std::string(after_disconnect.data(), after_disconnect.size()));
 }
 
 } // namespace

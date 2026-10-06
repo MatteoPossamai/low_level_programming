@@ -40,3 +40,46 @@ BM_DecodeDispatch          0.714 ns        0.714 ns    588711920
 BM_DecodePartialRead        1.11 ns         1.11 ns    378536388
 BM_DecodeFullRead           1.28 ns         1.28 ns    326948873
 ```
+
+## `bench_network_device` — epoll vs io_uring
+
+One loopback TCP request/response per iteration. The timed round trip includes
+client send/receive, the inbound SPSC queue, and the backend's response send.
+It is an end-to-end transport comparison, not an isolated syscall benchmark.
+The benchmark starts one backend reader thread and keeps one client connection
+open for each run.
+
+```bash
+./build/bench_network_device
+./build/bench_network_device --benchmark_min_time=1s
+./build/bench_network_device --benchmark_filter=IOUring
+```
+
+Build and run the socket tests with:
+
+```bash
+cmake --build build --target network_device_tests bench_network_device
+ctest --test-dir build -R '^network_device_tests$' --output-on-failure
+```
+
+### Hypothesis and one run
+
+Hypothesis: io_uring may be faster because submitting asynchronous work should
+return without blocking for each socket operation. In one run, the loopback
+round trip was slower with io_uring:
+
+```
+Benchmark                                          Time             CPU   Iterations UserCounters...
+Network/Epoll/LoopbackRoundTrip/real_time       6350 ns         4447 ns       105433 items_per_second=157.469k/s
+Network/IOUring/LoopbackRoundTrip/real_time     9866 ns         6471 ns        69781 items_per_second=101.355k/s
+```
+
+This is one result for this workload and setup; it does not establish which
+backend is generally faster. The benchmark measures a full request/response,
+not just the cost of submitting an asynchronous operation.
+
+`io_uring` shines when the kernel calls can be spread across different calls,
+but in this specific benchmark, due to the TCP nature of it, (as documented
+[online](https://www.man7.org/linux/man-pages/man7/io_uring.7.html)) batching
+does not really happen, and hence the extra machinery and operations put into
+place to perform the `io_uring` way make it overall quite slower.

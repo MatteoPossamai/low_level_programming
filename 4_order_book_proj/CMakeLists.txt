@@ -94,13 +94,23 @@ target_link_libraries(bench_engine PRIVATE
     engine
     benchmark::benchmark
 )
+
+add_executable(bench_network_device benchmark/network_device_bench.cpp)
+target_include_directories(bench_network_device PRIVATE src)
+target_link_libraries(bench_network_device PRIVATE
+    benchmark::benchmark
+    uring
+)
+target_compile_options(bench_network_device PRIVATE
+    -O2 -g -Wall -Wextra -Wshadow
+)
 target_compile_options(bench_engine PRIVATE
     -O2 -g -Wall -Wextra -Wshadow
 )
 
 add_executable(network_device_tests tests/network_device_test.cpp)
 target_include_directories(network_device_tests PRIVATE src)
-target_link_libraries(network_device_tests PRIVATE GTest::gtest_main)
+target_link_libraries(network_device_tests PRIVATE GTest::gtest_main uring)
 target_compile_options(network_device_tests PRIVATE
     -O0 -g -Wall -Wextra -Wshadow
 )
