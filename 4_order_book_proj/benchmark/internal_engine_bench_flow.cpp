@@ -1,11 +1,18 @@
 #include "engine.hpp"
 #include "engine_flow_generator.hpp"
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <string_view>
+#include <thread>
+#include <utility>
 #include <vector>
 
-constexpr size_t INITIAL_WARMING_ORDER_NO = 30;
+constexpr size_t INITIAL_WARMING_ORDER_NO = 3000;
 constexpr size_t BENCH_ORDER_NO = 100000;
 
 constexpr size_t MAX_QUEUE_SIZE = 2048 * 1024;
@@ -17,14 +24,81 @@ struct TscStamp {
   uint32_t cpu_tag;
 };
 
+enum class RequestKind : size_t {
+  passive_limit,
+  aggressive_limit,
+  market,
+  cancel,
+};
+
+constexpr std::array<std::string_view, 4> REQUEST_KIND_NAMES = {
+    "limit_passive", "limit_aggressive", "market", "cancel"};
+
+struct LatencySample {
+  uint64_t ticks;
+  RequestKind kind;
+};
+
 inline TscStamp read_tsc() {
   uint32_t lo, hi, aux;
   asm volatile("rdtscp\n\tlfence" : "=a"(lo), "=d"(hi), "=c"(aux) : : "memory");
   return {(uint64_t{hi} << 32) | lo, aux};
 }
 
+double estimate_tsc_hz() {
+  using Clock = std::chrono::steady_clock;
+  const auto wall_start = Clock::now();
+  const auto tsc_start = read_tsc();
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  const auto tsc_end = read_tsc();
+  const auto wall_end = Clock::now();
+
+  const double elapsed_seconds =
+      std::chrono::duration<double>(wall_end - wall_start).count();
+  return static_cast<double>(tsc_end.ticks - tsc_start.ticks) /
+         elapsed_seconds;
+}
+
+RequestKind classify(const InboundMessage &msg) {
+  const char type = std::to_integer<char>(msg.bytes[0]);
+  if (type == CancelRequestView::TYPE)
+    return RequestKind::cancel;
+
+  EnterRequestView enter(msg.bytes.data());
+  if (enter.Price() == 0x7FFFFFFF)
+    return RequestKind::market;
+
+  const bool aggressive =
+      (enter.Side() == SideEnum::B && enter.Price() >= SPREAD) ||
+      (enter.Side() == SideEnum::S && enter.Price() <= SPREAD);
+  return aggressive ? RequestKind::aggressive_limit
+                    : RequestKind::passive_limit;
+}
+
+uint64_t percentile(const std::vector<uint64_t> &sorted, double p) {
+  const size_t rank =
+      std::max<size_t>(1, static_cast<size_t>(std::ceil(p * sorted.size())));
+  return sorted[rank - 1];
+}
+
+void print_stats(std::string_view name, std::vector<uint64_t> ns) {
+  if (ns.empty()) {
+    std::cout << name << ": no samples\n";
+    return;
+  }
+  std::sort(ns.begin(), ns.end());
+  std::cout << name << " (n=" << ns.size() << ")"
+            << " P50: " << percentile(ns, 0.50) << " ns"
+            << " P99: " << percentile(ns, 0.99) << " ns"
+            << " P99.9: " << percentile(ns, 0.999) << " ns"
+            << " Worst: " << ns.back() << " ns\n";
+}
+
 int main() {
-  std::vector<uint64_t> times;
+  const double tsc_hz = estimate_tsc_hz();
+  std::vector<LatencySample> samples;
+  samples.reserve(BENCH_ORDER_NO);
+  size_t migrated_samples = 0;
   FlowGenerator fg(INITIAL_WARMING_ORDER_NO, BENCH_ORDER_NO);
   auto incoming_queue =
       std::make_unique<spsc_queue<InboundMessage, MAX_QUEUE_SIZE>>();
@@ -35,32 +109,36 @@ int main() {
       Engine<MAX_QUEUE_SIZE, MAX_ORDER_BUFFER_SIZE, ALLOCATOR_SIZE>>(
       *incoming_queue, *outgoing_queue);
 
-  for (auto msg : fg.get_warm_book()) {
+  for (const auto &msg : fg.get_warm_book()) {
     engine->process(msg);
   }
 
-  for (auto msg : fg.get_bench_orders()) {
+  for (const auto &msg : fg.get_bench_orders()) {
+    const RequestKind kind = classify(msg);
     const auto start = read_tsc();
     engine->process(msg);
     const auto end = read_tsc();
     if (start.cpu_tag == end.cpu_tag)
-      times.push_back(end.ticks - start.ticks);
+      samples.push_back({end.ticks - start.ticks, kind});
+    else
+      ++migrated_samples;
   }
 
-  std::sort(times.begin(), times.end());
+  std::array<std::vector<uint64_t>, REQUEST_KIND_NAMES.size()> by_kind;
+  std::vector<uint64_t> all_ns;
+  all_ns.reserve(samples.size());
+  for (const auto &sample : samples) {
+    const auto ns = static_cast<uint64_t>(
+        std::llround(static_cast<double>(sample.ticks) * 1'000'000'000.0 /
+                     tsc_hz));
+    all_ns.push_back(ns);
+    by_kind[static_cast<size_t>(sample.kind)].push_back(ns);
+  }
 
-  auto percentile = [&](double p) {
-    const size_t rank = static_cast<size_t>(std::ceil(p * times.size()));
-    return times[rank - 1];
-  };
-
-  auto p50 = percentile(0.50);
-  auto p99 = percentile(0.99);
-  auto p999 = percentile(0.999);
-  auto worst = times.back();
-
-  std::cout << "P50: " << p50 << std::endl
-            << "P99: " << p99 << std::endl
-            << "P99.9: " << p999 << std::endl
-            << "Worst: " << worst << std::endl;
+  std::cout << "Estimated TSC frequency: " << (tsc_hz / 1'000'000.0)
+            << " MHz\n"
+            << "Discarded migrated samples: " << migrated_samples << '\n';
+  print_stats("all", std::move(all_ns));
+  for (size_t i = 0; i < by_kind.size(); ++i)
+    print_stats(REQUEST_KIND_NAMES[i], std::move(by_kind[i]));
 }
