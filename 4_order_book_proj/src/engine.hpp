@@ -44,6 +44,8 @@ class Engine {
   uint64_t counter = 0;
   uint64_t match_counter = 0;
   std::unordered_map<uint64_t, OrderBlock *> order_blocks_map;
+  uint64_t buy_orders = 0;
+  uint64_t sell_orders = 0;
 
   std::array<OrderList, BUFFER_SIZE> order_buffer{};
   uint64_t best_buy_idx = 0;
@@ -204,8 +206,8 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_buy_order(
   send_accepted(account, order, id);
   // No need to handle the market order, since that is already very high number
   uint32_t curr_qty = order.Quantity();
-  while (best_sell_idx < BUFFER_SIZE && best_sell_idx <= order.Price() &&
-         curr_qty > 0) {
+  while (sell_orders > 0 && best_sell_idx < BUFFER_SIZE &&
+         best_sell_idx <= order.Price() && curr_qty > 0) {
     OrderList *list = &order_buffer[best_sell_idx];
     OrderBlock *block = list->head;
     send_fills(account, order, block, std::min(block->curr_qty, curr_qty),
@@ -217,6 +219,7 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_buy_order(
     } else {
       // Resting qty <= incoming: resting fully filled, remove it
       order_blocks_map.erase(block->key);
+      sell_orders -= 1;
       curr_qty -= block->curr_qty;
       unlink(block, list);
       allocator.deallocate(block);
@@ -241,6 +244,7 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_buy_order(
     new_block->id = id;
     new_block->key = order_key(account, order.UserRefNum());
     new_block->curr_qty = curr_qty;
+    buy_orders += 1;
     std::memcpy(new_block->raw.data(), order.data(),
                 EnterRequestView::WIRE_SIZE);
     append_list(new_block, &order_buffer[order.Price()]);
@@ -259,8 +263,8 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_sell_order(
   uint64_t limit = order.Price() == MARKETPRICE ? 0 : order.Price();
   uint32_t curr_qty = order.Quantity();
   // best_buy_idx stops at 0 when bids run out, so check the level is non-empty
-  while (order_buffer[best_buy_idx].head != nullptr && best_buy_idx >= limit &&
-         curr_qty > 0) {
+  while (buy_orders > 0 && order_buffer[best_buy_idx].head != nullptr &&
+         best_buy_idx >= limit && curr_qty > 0) {
     OrderList *list = &order_buffer[best_buy_idx];
     OrderBlock *block = list->head;
     send_fills(account, order, block, std::min(block->curr_qty, curr_qty),
@@ -271,6 +275,7 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_sell_order(
       curr_qty = 0;
     } else {
       // Resting qty <= incoming: resting fully filled, remove it
+      buy_orders -= 1;
       order_blocks_map.erase(block->key);
       curr_qty -= block->curr_qty;
       unlink(block, list);
@@ -295,6 +300,7 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_sell_order(
     new_block->id = id;
     new_block->key = order_key(account, order.UserRefNum());
     new_block->curr_qty = curr_qty;
+    sell_orders += 1;
     std::memcpy(new_block->raw.data(), order.data(),
                 EnterRequestView::WIRE_SIZE);
     append_list(new_block, &order_buffer[order.Price()]);
@@ -338,14 +344,23 @@ uint32_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::cancel_order(
   unlink(block, &order_buffer[idx]);
   allocator.deallocate(block);
 
+  sell_orders -= !is_buy;
+  buy_orders -= is_buy;
+
   if (order_buffer[idx].head == nullptr) {
     if (is_buy && idx == best_buy_idx) {
-      while (best_buy_idx > 0 && order_buffer[best_buy_idx].head == nullptr)
+      while (buy_orders > 0 && best_buy_idx > 0 &&
+             order_buffer[best_buy_idx].head == nullptr)
         best_buy_idx--;
+      if (buy_orders == 0)
+        best_buy_idx = 0;
+
     } else if (!is_buy && idx == best_sell_idx) {
-      while (best_sell_idx < BUFFER_SIZE &&
+      while (sell_orders > 0 && best_sell_idx < BUFFER_SIZE &&
              order_buffer[best_sell_idx].head == nullptr)
         best_sell_idx++;
+      if (sell_orders == 0)
+        best_sell_idx = BUFFER_SIZE;
     }
   }
   send_cancelled(account, cancel.UserRefNum(), cancelled, 'U');

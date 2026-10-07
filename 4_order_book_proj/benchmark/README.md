@@ -86,6 +86,31 @@ place to perform the `io_uring` way make it overall quite slower.
 
 ## Benchmark of all flow
 
+### Optimizations applied
+
+#### Optimization 1
+
+```c++
++  sell_orders -= !is_buy;
++  buy_orders -= is_buy;
++
+   if (order_buffer[idx].head == nullptr) {
+     if (is_buy && idx == best_buy_idx) {
+       while (best_buy_idx > 0 && order_buffer[best_buy_idx].head == nullptr)
+         best_buy_idx--;
+     } else if (!is_buy && idx == best_sell_idx) {
+-      while (best_sell_idx < BUFFER_SIZE &&
++      while (sell_orders > 0 && best_sell_idx < BUFFER_SIZE &&
+              order_buffer[best_sell_idx].head == nullptr)
+         best_sell_idx++;
++      if (sell_orders == 0)
++        best_sell_idx = BUFFER_SIZE;
+     }
+```
+
+Why: avoids walking the rest of the empty vector in case the offer is empty
+(extended to ask as well).
+
 ### Internal engine benchmark
 
 Tells the time that it takes to go from call to `process` to the result
@@ -107,10 +132,18 @@ cancel                 47744       169   3767791   4173910   4552976        8105
 
 ```
 
-#### Result post optimization
+#### Result post optimization 1
 
 ```shell
-TODO: add results
+TSC frequency: 2803.13 MHz | discarded migrated samples: 0
+
+Request              Samples    P50 ns    P99 ns  P99.9 ns    Max ns    P99.9 idx      Max idx
+----------------------------------------------------------------------------------------------
+all                   100000        59       243       511   2900828        83271        94571
+limit_passive          47778        58       149       333   2332512        85801        72752
+limit_aggressive        2532       110       534   2323351   2652857        99934        93605
+market                  1946       153   2289224   2834116   2900828        97495        94571
+cancel                 47744        60       151       341      3658        34628        53046
 ```
 
 ### Wire to wire benchmark
@@ -133,8 +166,16 @@ market                  1929    109481  40817425  41598434  41931194        4959
 cancel                 47117    104814  40980999  41772178  42689551        85062        60195
 ```
 
-#### Result post optimization
+#### Result post optimization 1
 
 ```shell
-TODO: add results
+TSC frequency: 2803.15 MHz
+
+Request              Samples    P50 ns    P99 ns  P99.9 ns    Max ns    P99.9 idx      Max idx
+----------------------------------------------------------------------------------------------
+all                    99642     17851  40914443  41736708  42159736        85604        66029
+limit_passive          47589     18416  40912311  41724426  42159736         8861        66029
+limit_aggressive        2521     18864  40941898  41751910  42084937        12422        83058
+market                  1942     18496  40695851  41626332  41782064        63860        50617
+cancel                 47590     17268  40919374  41747626  42154596        65238        87157
 ```
