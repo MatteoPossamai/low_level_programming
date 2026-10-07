@@ -118,8 +118,14 @@ timing starts.
 **Engine** (`src/engine.hpp`) — tick-offset book, intrusive FIFO per level,
 blocks from the pool allocator, orders keyed by `account << 32 | UserRefNum`.
 Price-time matching for limit and market orders, cancel as reduce-to-new-size.
-Emits OUCH Accepted / Executed (one per side, shared match number) / Canceled
-with the destination account. All tests pass under ASan+UBSan.
+Emits Accepted / Executed (one per side, shared match number) / Canceled / Cancel
+Reject with the destination account. Cancel requests always produce a result: Canceled
+when the open quantity changes, or Cancel Reject when the order is missing or
+the requested quantity would not reduce it. The engine uses OUCH Type I for
+that rejection, extending its specified use for this project's API so clients
+do not wait indefinitely for a response. Nasdaq's OUCH 5.0 specification says
+superfluous cancels are silently ignored, so this is a deliberate compatibility
+deviation ([specification](https://www.nasdaqtrader.com/content/technicalsupport/specifications/TradingProducts/OUCH5.0.pdf)).
 
 **Transport** — epoll and io_uring loopback request/response paths are
 implemented and benchmarked. Results and limitations are in

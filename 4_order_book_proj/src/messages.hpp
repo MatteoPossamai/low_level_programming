@@ -184,6 +184,19 @@ public:
   char Reason() const { return detail::load_char(p + 17); }
 };
 
+class CancelRejectResponseView {
+  const std::byte *p;
+
+public:
+  static constexpr char TYPE = 'I';
+  static constexpr size_t WIRE_SIZE = 15;
+  explicit CancelRejectResponseView(const std::byte *buf) : p(buf) {}
+
+  uint64_t Timestamp() const { return detail::load_be64(p + 1); }
+  uint32_t UserRefNum() const { return detail::load_be32(p + 9); }
+  uint16_t AppendageLength() const { return detail::load_be16(p + 13); }
+};
+
 class ExecutedResponseView {
   const std::byte *p;
 
@@ -388,6 +401,28 @@ public:
   std::span<const std::byte> bytes() const { return buf; }
 };
 
+class CancelRejectResponseBuilder {
+  std::array<std::byte, CancelRejectResponseView::WIRE_SIZE> buf{};
+
+public:
+  CancelRejectResponseBuilder() {
+    detail::store_char(buf.data(), CancelRejectResponseView::TYPE);
+  }
+  CancelRejectResponseBuilder &Timestamp(uint64_t v) {
+    detail::store_be64(buf.data() + 1, v);
+    return *this;
+  }
+  CancelRejectResponseBuilder &UserRefNum(uint32_t v) {
+    detail::store_be32(buf.data() + 9, v);
+    return *this;
+  }
+  CancelRejectResponseBuilder &AppendageLength(uint16_t v) {
+    detail::store_be16(buf.data() + 13, v);
+    return *this;
+  }
+  std::span<const std::byte> bytes() const { return buf; }
+};
+
 class ExecutedResponseBuilder {
   std::array<std::byte, ExecutedResponseView::WIRE_SIZE> buf{};
 
@@ -431,7 +466,8 @@ public:
 
 using UOUCHMessage =
     std::variant<EnterRequestView, CancelRequestView, AcceptResponseView,
-                 CancelledResponseView, ExecutedResponseView>;
+                 CancelledResponseView, CancelRejectResponseView,
+                 ExecutedResponseView>;
 // Queue payloads: raw wire bytes, owned by value, sized for the largest type.
 // Wrap with decode() / a View on the consumer side.
 using OUCHMessageIn =

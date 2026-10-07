@@ -11,6 +11,8 @@ UOUCHMessage decode(const std::byte *bytes) {
     return AcceptResponseView{bytes};
   case CancelledResponseView::TYPE:
     return CancelledResponseView{bytes};
+  case CancelRejectResponseView::TYPE:
+    return CancelRejectResponseView{bytes};
   case ExecutedResponseView::TYPE:
     return ExecutedResponseView{bytes};
   default:

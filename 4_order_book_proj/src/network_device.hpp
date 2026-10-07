@@ -25,6 +25,7 @@ constexpr std::size_t kMaxReqSize =
 
 constexpr std::size_t kMaxResSize =
     std::max({AcceptResponseView::WIRE_SIZE, CancelledResponseView::WIRE_SIZE,
+              CancelRejectResponseView::WIRE_SIZE,
               ExecutedResponseView::WIRE_SIZE});
 
 class NetworkDevice {
@@ -148,6 +149,9 @@ public:
       break;
     case static_cast<std::byte>('C'):
       size = CancelledResponseView::WIRE_SIZE;
+      break;
+    case static_cast<std::byte>('I'):
+      size = CancelRejectResponseView::WIRE_SIZE;
       break;
     case static_cast<std::byte>('E'):
       size = ExecutedResponseView::WIRE_SIZE;
@@ -310,6 +314,9 @@ public:
       break;
     case static_cast<std::byte>('C'):
       size = CancelledResponseView::WIRE_SIZE;
+      break;
+    case static_cast<std::byte>('I'):
+      size = CancelRejectResponseView::WIRE_SIZE;
       break;
     case static_cast<std::byte>('E'):
       size = ExecutedResponseView::WIRE_SIZE;

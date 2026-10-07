@@ -27,6 +27,13 @@ inbound from the Queue of the Inbound Message Receiver and feed it to the algori
 Once there is a fill, or another event, that message is forwarded to another
 queue for notification purposes to the outside world.
 
+Every cancel request receives a result: Type C when the open quantity is
+reduced, or Type I when the order is missing or the requested quantity does
+not reduce it. Type I follows the OUCH Cancel Reject wire layout, but using it
+for these no-op cases is a project-specific extension. The engine does this so
+clients always learn the result of a cancel request. This extends standard
+OUCH behavior, which silently ignores superfluous cancel requests.
+
 This is going to be implemented with a flat Array with each spot corresponding
 to the price it refers to, with a slightly improved structure from
 [data structure work](./data_structure_bench/tick_offset_str.cpp).

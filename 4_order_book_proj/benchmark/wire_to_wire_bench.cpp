@@ -4,13 +4,20 @@
 #include "network_device.hpp"
 #include "queues.hpp"
 #include <algorithm>
+#include <array>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <iomanip>
 #include <iostream>
+#include <memory>
+#include <poll.h>
+#include <stdexcept>
 #include <string_view>
+#include <sys/socket.h>
 #include <thread>
 #include <vector>
 
@@ -107,6 +114,132 @@ void print_stats(std::string_view name, std::vector<LatencySample> samples) {
             << '\n';
 }
 
+class ResponseReader {
+  int socket_fd;
+  std::vector<std::byte> buffered;
+
+  static size_t response_size(char type) {
+    switch (type) {
+    case AcceptResponseView::TYPE:
+      return AcceptResponseView::WIRE_SIZE;
+    case CancelledResponseView::TYPE:
+      return CancelledResponseView::WIRE_SIZE;
+    case CancelRejectResponseView::TYPE:
+      return CancelRejectResponseView::WIRE_SIZE;
+    case ExecutedResponseView::TYPE:
+      return ExecutedResponseView::WIRE_SIZE;
+    default:
+      throw std::runtime_error("Unknown OUCH response type");
+    }
+  }
+
+  bool pop_response(char &type, uint32_t &user_ref_num) {
+    if (buffered.empty())
+      return false;
+    type = std::to_integer<char>(buffered.front());
+    const size_t size = response_size(type);
+    if (buffered.size() < size)
+      return false;
+    user_ref_num = detail::load_be32(buffered.data() + 9);
+    buffered.erase(buffered.begin(), buffered.begin() + size);
+    return true;
+  }
+
+  bool receive(bool nonblocking) {
+    std::array<std::byte, 1024> bytes{};
+    const ssize_t count = recv(socket_fd, bytes.data(), bytes.size(),
+                               nonblocking ? MSG_DONTWAIT : 0);
+    if (count < 0) {
+      if (nonblocking && (errno == EAGAIN || errno == EWOULDBLOCK))
+        return false;
+      perror("Receive");
+      std::exit(1);
+    }
+    if (count == 0) {
+      std::cerr << "Client connection closed while waiting for response\n";
+      std::exit(1);
+    }
+    buffered.insert(buffered.end(), bytes.begin(), bytes.begin() + count);
+    return true;
+  }
+
+public:
+  explicit ResponseReader(int fd) : socket_fd(fd) {}
+
+  void wait_for_ack(char expected_type, char alternative_type,
+                    uint32_t expected_user_ref_num) {
+    char type;
+    uint32_t user_ref_num;
+    while (true) {
+      while (pop_response(type, user_ref_num)) {
+        if ((type == expected_type || type == alternative_type) &&
+            user_ref_num == expected_user_ref_num)
+          return;
+      }
+
+      pollfd response_fd{socket_fd, POLLIN, 0};
+      const int ready = poll(&response_fd, 1, 5000);
+      if (ready == 0) {
+        std::cerr << "Timed out waiting for response to UserRefNum "
+                  << expected_user_ref_num << '\n';
+        std::exit(1);
+      }
+      if (ready < 0) {
+        perror("poll");
+        std::exit(1);
+      }
+      receive(false);
+    }
+  }
+
+  void drain_available() {
+    char type;
+    uint32_t user_ref_num;
+    while (pop_response(type, user_ref_num)) {
+    }
+    while (receive(true)) {
+      while (pop_response(type, user_ref_num)) {
+      }
+    }
+  }
+};
+
+struct ExpectedAck {
+  char type;
+  char alternative_type;
+  uint32_t user_ref_num;
+};
+
+ExpectedAck expected_ack(const InboundMessage &message) {
+  if (std::to_integer<char>(message.bytes[0]) == CancelRequestView::TYPE) {
+    CancelRequestView cancel(message.bytes.data());
+    return {CancelledResponseView::TYPE, CancelRejectResponseView::TYPE,
+            cancel.UserRefNum()};
+  }
+  EnterRequestView enter(message.bytes.data());
+  return {AcceptResponseView::TYPE, '\0', enter.UserRefNum()};
+}
+
+void send_and_wait_for_ack(int socket_fd, ResponseReader &reader,
+                           const InboundMessage &message) {
+  const auto expected = expected_ack(message);
+  const size_t message_size =
+      std::to_integer<char>(message.bytes[0]) == CancelRequestView::TYPE
+          ? CancelRequestView::WIRE_SIZE
+          : EnterRequestView::WIRE_SIZE;
+  const ssize_t sent = send(socket_fd, message.bytes.data(), message_size, 0);
+  if (sent < 0) {
+    perror("Send");
+    std::exit(1);
+  }
+  if (static_cast<size_t>(sent) != message_size) {
+    std::cerr << "Short request send\n";
+    std::exit(1);
+  }
+  reader.wait_for_ack(expected.type, expected.alternative_type,
+                      expected.user_ref_num);
+}
+
 spsc_queue<InboundMessage, MAX_QUEUE_SIZE> incoming_queue;
 spsc_queue<OutboundMessage, MAX_QUEUE_SIZE> outgoing_queue;
 auto engine = Engine<MAX_QUEUE_SIZE, MAX_ORDER_BUFFER_SIZE, ALLOCATOR_SIZE>(
@@ -139,6 +272,7 @@ int main() {
   network_reader_th.detach();
 
   std::vector<int> sockets = {};
+  std::vector<std::unique_ptr<ResponseReader>> response_readers;
   for (int i = START_PORT_RANGE; i <= END_PORT_RANGE; i++) {
     int clientSocket = socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in serverAddress;
@@ -148,6 +282,7 @@ int main() {
     auto res = connect(clientSocket, (struct sockaddr *)&serverAddress,
                        sizeof(serverAddress));
     sockets.push_back(clientSocket);
+    response_readers.push_back(std::make_unique<ResponseReader>(clientSocket));
     if (res != 0) {
       perror("Connect");
       exit(1);
@@ -158,29 +293,21 @@ int main() {
   std::vector<LatencySample> samples;
 
   for (auto order : fg.get_warm_book()) {
-    char buf[1024];
     auto client = get<1>(order);
-    auto order_bytes = get<0>(order).bytes.data();
-    auto size = get<0>(order).bytes.size();
-    send(sockets[client], order_bytes, size, 0);
-    ssize_t n = recv(sockets[client], buf, sizeof(buf) - 1, 0);
-    if (n < 0) {
-      perror("Receive");
-      exit(1);
-    }
+    const auto &message = get<0>(order);
+    send_and_wait_for_ack(sockets[client], *response_readers[client], message);
+    response_readers[client]->drain_available();
   }
 
   size_t counter = 0;
   const double tsc_hz = estimate_tsc_hz();
   for (auto order : fg.get_bench_orders()) {
-    char buf[1024];
     auto client = get<1>(order);
-    auto order_bytes = get<0>(order).bytes.data();
-    auto size = get<0>(order).bytes.size();
+    const auto &message = get<0>(order);
+    response_readers[client]->drain_available();
 
     const auto start = read_tsc();
-    send(sockets[client], order_bytes, size, 0);
-    ssize_t n = recv(sockets[client], buf, sizeof(buf) - 1, 0);
+    send_and_wait_for_ack(sockets[client], *response_readers[client], message);
     const auto end = read_tsc();
     if (start.cpu_tag == end.cpu_tag) {
       const RequestKind kind = classify(get<0>(order));
@@ -189,10 +316,7 @@ int main() {
           std::llround(static_cast<double>(samples[samples.size() - 1].ticks) *
                        1'000'000'000.0 / tsc_hz));
     }
-    if (n < 0) {
-      perror("Receive");
-      exit(1);
-    }
+    response_readers[client]->drain_available();
   }
 
   for (auto clientSocket : sockets) {

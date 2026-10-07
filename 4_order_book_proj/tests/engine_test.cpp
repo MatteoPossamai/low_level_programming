@@ -16,6 +16,7 @@
 //   A <acct>/<urn> <side> <qty>@<price> ref=<order ref>   Accepted
 //   E <acct>/<urn> <qty>@<price> <liquidity> m=<match>     Executed
 //   C <acct>/<urn> <qty> <reason>                          Canceled
+//   I <acct>/<urn>                                         Cancel rejected
 // After each step the test pushes an end marker onto the outbound queue and
 // reads up to it, so missing and extra messages both fail instead of hanging.
 
@@ -66,6 +67,8 @@ std::string render(const OutboundMessage &m) {
   } else if (auto *c = std::get_if<CancelledResponseView>(&decoded)) {
     std::snprintf(buf, sizeof buf, "C %u/%u %u %c", m.account, c->UserRefNum(),
                   c->Quantity(), c->Reason());
+  } else if (auto *i = std::get_if<CancelRejectResponseView>(&decoded)) {
+    std::snprintf(buf, sizeof buf, "I %u/%u", m.account, i->UserRefNum());
   } else {
     std::snprintf(buf, sizeof buf, "unexpected type %c",
                   static_cast<char>(m.bytes[0]));
@@ -99,8 +102,8 @@ std::vector<Scenario> scenarios() {
            {enter(2, 1, B::B, 10, 105),
             {"A 2/1 B 10@105 ref=2", "E 2/1 10@105 R m=1",
              "E 1/1 10@105 A m=1"}},
-           {cancel(1, 1, 0), {}},
-           {cancel(2, 1, 0), {}},
+           {cancel(1, 1, 0), {"I 1/1"}},
+           {cancel(2, 1, 0), {"I 2/1"}},
        }},
       {"IncomingPartiallyFillsResting",
        {
@@ -166,8 +169,8 @@ std::vector<Scenario> scenarios() {
        {
            {enter(1, 1, B::B, 50, 100), {"A 1/1 B 50@100 ref=1"}},
            {cancel(1, 1, 20), {"C 1/1 30 U"}},
-           {cancel(1, 1, 40), {}},
-           {cancel(1, 1, 20), {}},
+           {cancel(1, 1, 40), {"I 1/1"}},
+           {cancel(1, 1, 20), {"C 1/1 10 U"}},
            {enter(2, 1, B::S, 25, 100),
             {"A 2/1 S 25@100 ref=2", "E 2/1 20@100 R m=1",
              "E 1/1 20@100 A m=1"}},
@@ -179,7 +182,7 @@ std::vector<Scenario> scenarios() {
            {enter(2, 1, B::S, 20, 60), {"A 2/1 S 20@60 ref=2"}},
            {cancel(2, 1, 0), {"C 2/1 20 U"}},
            {cancel(1, 1, 4), {"C 1/1 6 U"}},
-           {cancel(3, 1, 0), {}},
+           {cancel(3, 1, 0), {"I 3/1"}},
        }},
       {"CancelBestAskMovesBestAsk",
        {
@@ -204,7 +207,7 @@ std::vector<Scenario> scenarios() {
            {enter(1, 1, B::B, 5, 100), {"A 1/1 B 5@100 ref=1"}},
            {enter(2, 1, B::S, 5, 100),
             {"A 2/1 S 5@100 ref=2", "E 2/1 5@100 R m=1", "E 1/1 5@100 A m=1"}},
-           {cancel(1, 1, 0), {}},
+           {cancel(1, 1, 0), {"I 1/1"}},
            {enter(3, 1, B::S, 5, 100), {"A 3/1 S 5@100 ref=3"}},
        }},
       {"PoolFullCancelsRest",
@@ -333,6 +336,9 @@ TEST(EngineRandom, OutputIsConsistent) {
       std::pair<uint32_t, uint32_t> id{m.account, c->UserRefNum()};
       ASSERT_TRUE(accepted[id]) << "Canceled before Accepted";
       used[id] += c->Quantity();
+    } else if (auto *i = std::get_if<CancelRejectResponseView>(&decoded)) {
+      std::pair<uint32_t, uint32_t> id{m.account, i->UserRefNum()};
+      ASSERT_TRUE(accepted[id]) << "Cancel rejected before order accepted";
     } else {
       FAIL() << "unexpected outbound type";
     }

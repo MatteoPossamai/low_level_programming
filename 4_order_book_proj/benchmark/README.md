@@ -83,3 +83,58 @@ but in this specific benchmark, due to the TCP nature of it, (as documented
 [online](https://www.man7.org/linux/man-pages/man7/io_uring.7.html)) batching
 does not really happen, and hence the extra machinery and operations put into
 place to perform the `io_uring` way make it overall quite slower.
+
+## Benchmark of all flow
+
+### Internal engine benchmark
+
+Tells the time that it takes to go from call to `process` to the result
+being enqueued into the outbound queue, that is what the engine thread
+would take care to do.
+
+#### Result pre any optimization
+
+```shell
+TSC frequency: 2803.13 MHz | discarded migrated samples: 0
+
+Request              Samples    P50 ns    P99 ns  P99.9 ns    Max ns    P99.9 idx      Max idx
+----------------------------------------------------------------------------------------------
+all                   100000       168      1093   4077585   4552976        91076        90387
+limit_passive          47778       164       703      1258   3734680        93540        72752
+limit_aggressive        2532       317      1459   3999870   4415889        80127        87987
+market                  1946       457   3709327   4173513   4471113        83891        92218
+cancel                 47744       169   3767791   4173910   4552976        81058        90387
+
+```
+
+#### Result post optimization
+
+```shell
+TODO: add results
+```
+
+### Wire to wire benchmark
+
+Computes the time it takes from the message sent onto the wire until
+the ACK is coming back. Note that the threads and sender are on the same
+machine anyway.
+
+#### Result pre any optimization
+
+```shell
+TSC frequency: 2803.11 MHz
+
+Request              Samples    P50 ns    P99 ns  P99.9 ns    Max ns    P99.9 idx      Max idx
+----------------------------------------------------------------------------------------------
+all                    98730    105999  40953104  41727266  49468511        59917        74508
+limit_passive          47178    106653  40934864  41710547  42350755        60620        95470
+limit_aggressive        2506    108874  40920910  41814377  49468511        59515        74508
+market                  1929    109481  40817425  41598434  41931194        49597        91128
+cancel                 47117    104814  40980999  41772178  42689551        85062        60195
+```
+
+#### Result post optimization
+
+```shell
+TODO: add results
+```

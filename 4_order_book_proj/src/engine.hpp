@@ -114,6 +114,14 @@ class Engine {
                          .bytes());
   }
 
+  void send_cancel_rejected(uint32_t account, uint32_t user_ref_num) {
+    publish(account, CancelRejectResponseBuilder()
+                         .Timestamp(timestamp())
+                         .UserRefNum(user_ref_num)
+                         .AppendageLength(0)
+                         .bytes());
+  }
+
   uint64_t insert_buy_order(uint32_t account, EnterRequestView order);
   uint64_t insert_sell_order(uint32_t account, EnterRequestView order);
 
@@ -296,19 +304,24 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_sell_order(
   return 0; // Signals that was inserted OK and already filled
 }
 
-// Returns the number of shares cancelled (0 if nothing changed). OUCH 5.0 2.3:
-// Quantity is the new intended size of the open order; 0 cancels the rest.
+// Returns the number of shares cancelled (0 if nothing changed). Quantity is
+// the new intended size of the open order; 0 cancels the rest. This engine
+// emits a Type I Cancel Reject for a no-op, extending standard OUCH behavior.
 template <size_t QUEUE_SIZE, size_t BUFFER_SIZE, size_t ALLOCATOR_SIZE>
 uint32_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::cancel_order(
     uint32_t account, CancelRequestView cancel) {
   auto it = order_blocks_map.find(order_key(account, cancel.UserRefNum()));
-  if (it == order_blocks_map.end())
-    return 0; // unknown or already gone: spec says silently ignore
+  if (it == order_blocks_map.end()) {
+    send_cancel_rejected(account, cancel.UserRefNum());
+    return 0;
+  }
 
   OrderBlock *block = it->second;
   uint32_t new_qty = cancel.Quantity();
-  if (new_qty >= block->curr_qty)
+  if (new_qty >= block->curr_qty) {
+    send_cancel_rejected(account, cancel.UserRefNum());
     return 0; // a cancel can only reduce
+  }
   uint32_t cancelled = block->curr_qty - new_qty;
   if (new_qty > 0) {
     block->curr_qty = new_qty; // reduce in place, keeps time priority
