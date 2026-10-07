@@ -59,8 +59,7 @@ double estimate_tsc_hz() {
 
   const double elapsed_seconds =
       std::chrono::duration<double>(wall_end - wall_start).count();
-  return static_cast<double>(tsc_end.ticks - tsc_start.ticks) /
-         elapsed_seconds;
+  return static_cast<double>(tsc_end.ticks - tsc_start.ticks) / elapsed_seconds;
 }
 
 RequestKind classify(const InboundMessage &msg) {
@@ -90,9 +89,8 @@ void print_stats(std::string_view name, std::vector<LatencySample> samples) {
     std::cout << std::left << std::setw(19) << name << " no samples\n";
     return;
   }
-  std::sort(samples.begin(), samples.end(), [](const auto &a, const auto &b) {
-    return a.ns < b.ns;
-  });
+  std::sort(samples.begin(), samples.end(),
+            [](const auto &a, const auto &b) { return a.ns < b.ns; });
   const auto &p999 = samples[percentile_index(samples.size(), 0.999)];
   const auto &worst = samples.back();
   std::cout << std::left << std::setw(19) << name << std::right << std::setw(9)
@@ -121,14 +119,14 @@ int main() {
       *incoming_queue, *outgoing_queue);
 
   for (const auto &msg : fg.get_warm_book()) {
-    engine->process(msg);
+    engine->process(get<0>(msg));
   }
 
   size_t request_index = 0;
   for (const auto &msg : fg.get_bench_orders()) {
-    const RequestKind kind = classify(msg);
+    const RequestKind kind = classify(get<0>(msg));
     const auto start = read_tsc();
-    engine->process(msg);
+    engine->process(get<0>(msg));
     const auto end = read_tsc();
     if (start.cpu_tag == end.cpu_tag)
       samples.push_back({request_index, end.ticks - start.ticks, 0, kind});
@@ -139,9 +137,8 @@ int main() {
 
   std::array<std::vector<LatencySample>, REQUEST_KIND_NAMES.size()> by_kind;
   for (auto &sample : samples) {
-    sample.ns = static_cast<uint64_t>(
-        std::llround(static_cast<double>(sample.ticks) * 1'000'000'000.0 /
-                     tsc_hz));
+    sample.ns = static_cast<uint64_t>(std::llround(
+        static_cast<double>(sample.ticks) * 1'000'000'000.0 / tsc_hz));
     by_kind[static_cast<size_t>(sample.kind)].push_back(sample);
   }
 

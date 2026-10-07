@@ -41,8 +41,8 @@ class FlowGenerator {
   std::uniform_int_distribution<size_t> qty_getter{0, 4};
   std::uniform_int_distribution<size_t> cross_gen{0, 99};
 
-  std::vector<InboundMessage> warm_book{};
-  std::vector<InboundMessage> bench_orders{};
+  std::vector<std::tuple<InboundMessage, size_t>> warm_book{};
+  std::vector<std::tuple<InboundMessage, size_t>> bench_orders{};
   std::array<uint32_t, CLIENT_NO> seq_counter{};
   std::vector<SimOrder> open_orders{};
   uint64_t next_arrival_sequence = 0;
@@ -60,9 +60,8 @@ class FlowGenerator {
 
         const bool crosses =
             incoming.price == MARKET_PRICE ||
-            (incoming.side == SideEnum::B
-                 ? resting.price <= incoming.price
-                 : resting.price >= incoming.price);
+            (incoming.side == SideEnum::B ? resting.price <= incoming.price
+                                          : resting.price >= incoming.price);
         if (!crosses)
           continue;
 
@@ -72,9 +71,9 @@ class FlowGenerator {
         }
 
         const SimOrder &best = open_orders[best_index];
-        const bool better_price =
-            incoming.side == SideEnum::B ? resting.price < best.price
-                                         : resting.price > best.price;
+        const bool better_price = incoming.side == SideEnum::B
+                                      ? resting.price < best.price
+                                      : resting.price > best.price;
         const bool same_price_older =
             resting.price == best.price &&
             resting.arrival_sequence < best.arrival_sequence;
@@ -86,8 +85,7 @@ class FlowGenerator {
         break;
 
       SimOrder &resting = open_orders[best_index];
-      const uint32_t fill_qty =
-          std::min(remaining_qty, resting.remaining_qty);
+      const uint32_t fill_qty = std::min(remaining_qty, resting.remaining_qty);
       remaining_qty -= fill_qty;
       resting.remaining_qty -= fill_qty;
       if (resting.remaining_qty == 0) {
@@ -104,8 +102,9 @@ class FlowGenerator {
     }
   }
 
-  InboundMessage create_enter_request(size_t client_idx, SideEnum side,
-                                      bool warm, bool market, bool crosses) {
+  std::tuple<InboundMessage, uint32_t>
+  create_enter_request(size_t client_idx, SideEnum side, bool warm, bool market,
+                       bool crosses) {
     InboundMessage msg;
     msg.account = static_cast<uint32_t>(client_idx);
     const uint32_t qty = static_cast<uint32_t>(QTYS[qty_getter(rng)]);
@@ -133,10 +132,10 @@ class FlowGenerator {
 
     apply_enter({static_cast<uint32_t>(client_idx), user_ref_num, side, price,
                  qty, next_arrival_sequence++});
-    return msg;
+    return {msg, msg.account};
   }
 
-  InboundMessage create_cancel_order() {
+  std::tuple<InboundMessage, size_t> create_cancel_order() {
     std::uniform_int_distribution<size_t> choose_order(0,
                                                        open_orders.size() - 1);
     const size_t index = choose_order(rng);
@@ -150,7 +149,7 @@ class FlowGenerator {
     builder.UserRefNum(order.user_ref_num).Quantity(0);
     std::memcpy(msg.bytes.data(), builder.bytes().data(),
                 builder.bytes().size());
-    return msg;
+    return {msg, order.account};
   }
 
 public:
@@ -193,10 +192,11 @@ public:
     }
   }
 
-  const std::vector<InboundMessage> &get_warm_book() const {
+  const std::vector<std::tuple<InboundMessage, size_t>> &get_warm_book() const {
     return warm_book;
   }
-  const std::vector<InboundMessage> &get_bench_orders() const {
+  const std::vector<std::tuple<InboundMessage, size_t>> &
+  get_bench_orders() const {
     return bench_orders;
   }
 };
