@@ -111,6 +111,41 @@ place to perform the `io_uring` way make it overall quite slower.
 Why: avoids walking the rest of the empty vector in case the offer is empty
 (extended to ask as well).
 
+#### Optimization 2
+
+```c++
+@@ -223,10 +223,12 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_buy_order(
+       curr_qty -= block->curr_qty;
+       unlink(block, list);
+       allocator.deallocate(block);
+-      while (best_sell_idx < BUFFER_SIZE &&
++      while (sell_orders > 0 && best_sell_idx < BUFFER_SIZE &&
+              order_buffer[best_sell_idx].head == nullptr) {
+         best_sell_idx++;
+       }
++      if (sell_orders == 0)
++        best_sell_idx = BUFFER_SIZE;
+     }
+   }
+   if (curr_qty > 0) {
+@@ -280,9 +282,12 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_sell_order(
+       curr_qty -= block->curr_qty;
+       unlink(block, list);
+       allocator.deallocate(block);
+-      while (best_buy_idx > 0 && order_buffer[best_buy_idx].head == nullptr) {
++      while (buy_orders > 0 && best_buy_idx > 0 &&
++             order_buffer[best_buy_idx].head == nullptr) {
+         best_buy_idx--;
+       }
++      if (buy_orders == 0)
++        best_buy_idx = 0;
+     }
+   }
+   if (curr_qty > 0) {
+```
+
+Why: same optimization as 1 but for the case of market orders and orders crossing spread.
+
 ### Internal engine benchmark
 
 Tells the time that it takes to go from call to `process` to the result
@@ -120,8 +155,6 @@ would take care to do.
 #### Result pre any optimization
 
 ```shell
-TSC frequency: 2803.13 MHz | discarded migrated samples: 0
-
 Request              Samples    P50 ns    P99 ns  P99.9 ns    Max ns    P99.9 idx      Max idx
 ----------------------------------------------------------------------------------------------
 all                   100000       168      1093   4077585   4552976        91076        90387
@@ -135,8 +168,6 @@ cancel                 47744       169   3767791   4173910   4552976        8105
 #### Result post optimization 1
 
 ```shell
-TSC frequency: 2803.13 MHz | discarded migrated samples: 0
-
 Request              Samples    P50 ns    P99 ns  P99.9 ns    Max ns    P99.9 idx      Max idx
 ----------------------------------------------------------------------------------------------
 all                   100000        59       243       511   2900828        83271        94571
@@ -144,6 +175,18 @@ limit_passive          47778        58       149       333   2332512        8580
 limit_aggressive        2532       110       534   2323351   2652857        99934        93605
 market                  1946       153   2289224   2834116   2900828        97495        94571
 cancel                 47744        60       151       341      3658        34628        53046
+```
+
+#### Result post optimization 2
+
+```shell
+Request              Samples    P50 ns    P99 ns  P99.9 ns    Max ns    P99.9 idx      Max idx
+----------------------------------------------------------------------------------------------
+all                   100000        59       211       424      6213        34881        75912
+limit_passive          47778        59       113       194      6213        15712        75912
+limit_aggressive        2532       110       467       631       783        66653        24578
+market                  1946       132       468       702       722        14696        15323
+cancel                 47744        60       144       261      1722        34591        18623
 ```
 
 ### Wire to wire benchmark
@@ -155,8 +198,6 @@ machine anyway.
 #### Result pre any optimization
 
 ```shell
-TSC frequency: 2803.11 MHz
-
 Request              Samples    P50 ns    P99 ns  P99.9 ns    Max ns    P99.9 idx      Max idx
 ----------------------------------------------------------------------------------------------
 all                    98730    105999  40953104  41727266  49468511        59917        74508
@@ -169,8 +210,6 @@ cancel                 47117    104814  40980999  41772178  42689551        8506
 #### Result post optimization 1
 
 ```shell
-TSC frequency: 2803.15 MHz
-
 Request              Samples    P50 ns    P99 ns  P99.9 ns    Max ns    P99.9 idx      Max idx
 ----------------------------------------------------------------------------------------------
 all                    99642     17851  40914443  41736708  42159736        85604        66029
@@ -179,3 +218,16 @@ limit_aggressive        2521     18864  40941898  41751910  42084937        1242
 market                  1942     18496  40695851  41626332  41782064        63860        50617
 cancel                 47590     17268  40919374  41747626  42154596        65238        87157
 ```
+
+#### Result post optimization 2
+
+```shell
+Request              Samples    P50 ns    P99 ns  P99.9 ns    Max ns    P99.9 idx      Max idx
+----------------------------------------------------------------------------------------------
+all                    99574     17302  41091411  41751594  42103631         7365        81737
+limit_passive          47575     17653  41060285  41749594  42045642        39493        67846
+limit_aggressive        2521     17912  41200552  41836120  41902689        21823        63099
+market                  1939     17714  40686356  41688934  41718212        50616        32667
+cancel                 47539     16534  41169391  41755289  42103631        92894        81737
+```
+

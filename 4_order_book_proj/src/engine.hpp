@@ -223,10 +223,12 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_buy_order(
       curr_qty -= block->curr_qty;
       unlink(block, list);
       allocator.deallocate(block);
-      while (best_sell_idx < BUFFER_SIZE &&
+      while (sell_orders > 0 && best_sell_idx < BUFFER_SIZE &&
              order_buffer[best_sell_idx].head == nullptr) {
         best_sell_idx++;
       }
+      if (sell_orders == 0)
+        best_sell_idx = BUFFER_SIZE;
     }
   }
   if (curr_qty > 0) {
@@ -280,9 +282,12 @@ uint64_t Engine<QUEUE_SIZE, BUFFER_SIZE, ALLOCATOR_SIZE>::insert_sell_order(
       curr_qty -= block->curr_qty;
       unlink(block, list);
       allocator.deallocate(block);
-      while (best_buy_idx > 0 && order_buffer[best_buy_idx].head == nullptr) {
+      while (buy_orders > 0 && best_buy_idx > 0 &&
+             order_buffer[best_buy_idx].head == nullptr) {
         best_buy_idx--;
       }
+      if (buy_orders == 0)
+        best_buy_idx = 0;
     }
   }
   if (curr_qty > 0) {
