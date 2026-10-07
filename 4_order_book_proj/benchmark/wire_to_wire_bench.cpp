@@ -12,6 +12,40 @@ constexpr size_t MAX_QUEUE_SIZE = 2048 * 1024;
 constexpr size_t MAX_ORDER_BUFFER_SIZE = 2048 * 1024;
 constexpr size_t ALLOCATOR_SIZE = 2048 * 1024;
 
+// Time stuff
+// ---
+struct TscStamp {
+  uint64_t ticks;
+  uint32_t cpu_tag;
+};
+
+struct LatencySample {
+  size_t index;
+  uint64_t ticks;
+  uint64_t ns;
+};
+
+inline TscStamp read_tsc() {
+  uint32_t lo, hi, aux;
+  asm volatile("rdtscp\n\tlfence" : "=a"(lo), "=d"(hi), "=c"(aux) : : "memory");
+  return {(uint64_t{hi} << 32) | lo, aux};
+}
+
+double estimate_tsc_hz() {
+  using Clock = std::chrono::steady_clock;
+  const auto wall_start = Clock::now();
+  const auto tsc_start = read_tsc();
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  const auto tsc_end = read_tsc();
+  const auto wall_end = Clock::now();
+
+  const double elapsed_seconds =
+      std::chrono::duration<double>(wall_end - wall_start).count();
+  return static_cast<double>(tsc_end.ticks - tsc_start.ticks) / elapsed_seconds;
+}
+
+// ---
+
 spsc_queue<InboundMessage, MAX_QUEUE_SIZE> incoming_queue;
 spsc_queue<OutboundMessage, MAX_QUEUE_SIZE> outgoing_queue;
 auto engine = Engine<MAX_QUEUE_SIZE, MAX_ORDER_BUFFER_SIZE, ALLOCATOR_SIZE>(
@@ -39,6 +73,7 @@ int main() {
   std::thread network_writer_th(network_writer_thread);
   std::thread engine_th(engine_thread);
   std::thread network_reader_th(network_reader_thread);
+
   FlowGenerator fg(INITIAL_WARMING_ORDER_NO, BENCH_ORDER_NO);
 
   network_writer_th.join();

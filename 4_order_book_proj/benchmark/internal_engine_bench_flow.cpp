@@ -5,8 +5,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <iomanip>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <utility>
@@ -85,7 +87,7 @@ size_t percentile_index(size_t count, double p) {
 
 void print_stats(std::string_view name, std::vector<LatencySample> samples) {
   if (samples.empty()) {
-    std::cout << name << ": no samples\n";
+    std::cout << std::left << std::setw(19) << name << " no samples\n";
     return;
   }
   std::sort(samples.begin(), samples.end(), [](const auto &a, const auto &b) {
@@ -93,17 +95,14 @@ void print_stats(std::string_view name, std::vector<LatencySample> samples) {
   });
   const auto &p999 = samples[percentile_index(samples.size(), 0.999)];
   const auto &worst = samples.back();
-  std::cout << name << " (n=" << samples.size() << ")"
-            << " P50: " << samples[percentile_index(samples.size(), 0.50)].ns
-            << " ns"
-            << " P99: " << samples[percentile_index(samples.size(), 0.99)].ns
-            << " ns"
-            << " P99.9: " << p999.ns << " ns"
-            << " [index=" << p999.index << ", kind="
-            << REQUEST_KIND_NAMES[static_cast<size_t>(p999.kind)] << "]"
-            << " Worst: " << worst.ns << " ns"
-            << " [index=" << worst.index << ", kind="
-            << REQUEST_KIND_NAMES[static_cast<size_t>(worst.kind)] << "]\n";
+  std::cout << std::left << std::setw(19) << name << std::right << std::setw(9)
+            << samples.size() << std::setw(10)
+            << samples[percentile_index(samples.size(), 0.50)].ns
+            << std::setw(10)
+            << samples[percentile_index(samples.size(), 0.99)].ns
+            << std::setw(10) << p999.ns << std::setw(10) << worst.ns
+            << std::setw(13) << p999.index << std::setw(13) << worst.index
+            << '\n';
 }
 
 int main() {
@@ -146,9 +145,15 @@ int main() {
     by_kind[static_cast<size_t>(sample.kind)].push_back(sample);
   }
 
-  std::cout << "Estimated TSC frequency: " << (tsc_hz / 1'000'000.0)
-            << " MHz\n"
-            << "Discarded migrated samples: " << migrated_samples << '\n';
+  std::cout << "TSC frequency: " << std::fixed << std::setprecision(2)
+            << (tsc_hz / 1'000'000.0) << " MHz"
+            << " | discarded migrated samples: " << migrated_samples << "\n\n";
+  std::cout << std::left << std::setw(19) << "Request" << std::right
+            << std::setw(9) << "Samples" << std::setw(10) << "P50 ns"
+            << std::setw(10) << "P99 ns" << std::setw(10) << "P99.9 ns"
+            << std::setw(10) << "Max ns" << std::setw(13) << "P99.9 idx"
+            << std::setw(13) << "Max idx" << '\n'
+            << std::string(94, '-') << '\n';
   print_stats("all", samples);
   for (size_t i = 0; i < by_kind.size(); ++i)
     print_stats(REQUEST_KIND_NAMES[i], std::move(by_kind[i]));
