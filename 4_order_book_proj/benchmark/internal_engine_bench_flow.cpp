@@ -35,7 +35,9 @@ constexpr std::array<std::string_view, 4> REQUEST_KIND_NAMES = {
     "limit_passive", "limit_aggressive", "market", "cancel"};
 
 struct LatencySample {
+  size_t index;
   uint64_t ticks;
+  uint64_t ns;
   RequestKind kind;
 };
 
@@ -75,23 +77,33 @@ RequestKind classify(const InboundMessage &msg) {
                     : RequestKind::passive_limit;
 }
 
-uint64_t percentile(const std::vector<uint64_t> &sorted, double p) {
+size_t percentile_index(size_t count, double p) {
   const size_t rank =
-      std::max<size_t>(1, static_cast<size_t>(std::ceil(p * sorted.size())));
-  return sorted[rank - 1];
+      std::max<size_t>(1, static_cast<size_t>(std::ceil(p * count)));
+  return rank - 1;
 }
 
-void print_stats(std::string_view name, std::vector<uint64_t> ns) {
-  if (ns.empty()) {
+void print_stats(std::string_view name, std::vector<LatencySample> samples) {
+  if (samples.empty()) {
     std::cout << name << ": no samples\n";
     return;
   }
-  std::sort(ns.begin(), ns.end());
-  std::cout << name << " (n=" << ns.size() << ")"
-            << " P50: " << percentile(ns, 0.50) << " ns"
-            << " P99: " << percentile(ns, 0.99) << " ns"
-            << " P99.9: " << percentile(ns, 0.999) << " ns"
-            << " Worst: " << ns.back() << " ns\n";
+  std::sort(samples.begin(), samples.end(), [](const auto &a, const auto &b) {
+    return a.ns < b.ns;
+  });
+  const auto &p999 = samples[percentile_index(samples.size(), 0.999)];
+  const auto &worst = samples.back();
+  std::cout << name << " (n=" << samples.size() << ")"
+            << " P50: " << samples[percentile_index(samples.size(), 0.50)].ns
+            << " ns"
+            << " P99: " << samples[percentile_index(samples.size(), 0.99)].ns
+            << " ns"
+            << " P99.9: " << p999.ns << " ns"
+            << " [index=" << p999.index << ", kind="
+            << REQUEST_KIND_NAMES[static_cast<size_t>(p999.kind)] << "]"
+            << " Worst: " << worst.ns << " ns"
+            << " [index=" << worst.index << ", kind="
+            << REQUEST_KIND_NAMES[static_cast<size_t>(worst.kind)] << "]\n";
 }
 
 int main() {
@@ -113,32 +125,31 @@ int main() {
     engine->process(msg);
   }
 
+  size_t request_index = 0;
   for (const auto &msg : fg.get_bench_orders()) {
     const RequestKind kind = classify(msg);
     const auto start = read_tsc();
     engine->process(msg);
     const auto end = read_tsc();
     if (start.cpu_tag == end.cpu_tag)
-      samples.push_back({end.ticks - start.ticks, kind});
+      samples.push_back({request_index, end.ticks - start.ticks, 0, kind});
     else
       ++migrated_samples;
+    ++request_index;
   }
 
-  std::array<std::vector<uint64_t>, REQUEST_KIND_NAMES.size()> by_kind;
-  std::vector<uint64_t> all_ns;
-  all_ns.reserve(samples.size());
-  for (const auto &sample : samples) {
-    const auto ns = static_cast<uint64_t>(
+  std::array<std::vector<LatencySample>, REQUEST_KIND_NAMES.size()> by_kind;
+  for (auto &sample : samples) {
+    sample.ns = static_cast<uint64_t>(
         std::llround(static_cast<double>(sample.ticks) * 1'000'000'000.0 /
                      tsc_hz));
-    all_ns.push_back(ns);
-    by_kind[static_cast<size_t>(sample.kind)].push_back(ns);
+    by_kind[static_cast<size_t>(sample.kind)].push_back(sample);
   }
 
   std::cout << "Estimated TSC frequency: " << (tsc_hz / 1'000'000.0)
             << " MHz\n"
             << "Discarded migrated samples: " << migrated_samples << '\n';
-  print_stats("all", std::move(all_ns));
+  print_stats("all", samples);
   for (size_t i = 0; i < by_kind.size(); ++i)
     print_stats(REQUEST_KIND_NAMES[i], std::move(by_kind[i]));
 }

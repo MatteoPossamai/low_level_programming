@@ -152,3 +152,14 @@ target_link_libraries(internal_engine_bench PRIVATE
 target_compile_options(internal_engine_bench  PRIVATE
   -O2 -g -Wall -Wextra -Wshadow
 )
+
+add_executable(wire_to_wire_bench benchmark/wire_to_wire_bench.cpp)
+target_include_directories(wire_to_wire_bench PRIVATE src)
+target_link_libraries(wire_to_wire_bench  PRIVATE
+    engine
+    uring
+
+)
+target_compile_options(wire_to_wire_bench  PRIVATE
+  -O2 -g -Wall -Wextra -Wshadow
+)
