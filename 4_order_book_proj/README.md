@@ -112,6 +112,11 @@ timing starts.
 
 ## Current state
 
+**Q4 progress** — Blocks 1-4 and 6-7 are complete. Block 5 (drop-copy) was
+removed from scope. The project write-up is in [`../ENGINE.md`](../ENGINE.md)
+and may still be edited. Benchmark measurements and the optimization record
+are in `benchmark/README.md`.
+
 **Block 1** — MVP complete. Winner by measurement at real-book scales:
 **tick-offset (sparse array)**. Numbers in `DATA_STRUCTURE.md`.
 
@@ -127,7 +132,7 @@ do not wait indefinitely for a response. Nasdaq's OUCH 5.0 specification says
 superfluous cancels are silently ignored, so this is a deliberate compatibility
 deviation ([specification](https://www.nasdaqtrader.com/content/technicalsupport/specifications/TradingProducts/OUCH5.0.pdf)).
 
-**Transport** — epoll and io_uring loopback request/response paths are
+**Transport** — DONE. epoll and io_uring loopback request/response paths are
 implemented and benchmarked. Results and limitations are in
 `benchmark/README.md`.
 
@@ -149,16 +154,14 @@ messages per iteration, -O2, threads unpinned, CPU scaling on):
 - Cancel quantity read as the new open size; spec wording ("executed in
   total") is ambiguous.
 - Codec has no variable-length optional appendage support.
-- Outbound `enqueue` blocks when full: a stalled fan-out stalls the engine
-  (Block 5 policy).
+- Outbound `enqueue` blocks when full; if a consumer stalls, the engine can
+  stall too.
 
-## Open items
+## Remaining items
 
-- **Profile the baseline** — throughput is flat with depth, so per-message
-  fixed costs dominate. Candidates: `unordered_map`, `clock_gettime`, message
-  encoding. Write the hypothesis before running `perf`.
-- **`std::unordered_map` → flat index** for cancel lookup.
-- **Price-level bitset** for best-idx walks after a level empties.
-- **Inbound validation stage** (price range, side, quantity) before the queue.
-- **Codec fuzzing.**
-- **Vary the op mix** via `state.range()`.
+These are deferred ideas or accepted POC limits:
+
+- **Possible future experiments** — replace `std::unordered_map` with a flat
+  cancel index; test a price-level bitset; vary the Block 1 benchmark op mix.
+- **Possible future hardening** — add inbound validation (price range, side,
+  quantity) and codec fuzzing.

@@ -1,5 +1,7 @@
 # Benchmark results
 
+Project write-up: [`../ENGINE.md`](../ENGINE.md).
+
 Machine, `-O2`, DEBUG-mode `libbenchmark`, CPU scaling enabled. Numbers are
 representative, not p99.
 
@@ -189,6 +191,25 @@ market                  1946       132       468       702       722        1469
 cancel                 47744        60       144       261      1722        34591        18623
 ```
 
+### Perf investigation and finding
+
+`perf record -g -e cycles:u` first showed most engine samples in
+`cancel_order`. `perf annotate` placed samples in the loop that advanced the
+best-price index across empty price levels. The loop could scan a large part
+of the configured price array after the last order on that side had gone.
+
+The engine now tracks the number of resting orders on each side. Cancel and
+matching scans stop when that side's count reaches zero, and the best index is
+reset to the empty-book sentinel. This is the targeted optimization recorded
+above. In these runs, overall internal p99.9 changed from about 4.08 ms to
+424 ns, and max from about 4.55 ms to 6.2 μs. These are benchmark results from
+the recorded runs, not a guarantee for other machines or setups.
+
+`perf record` samples the whole benchmark process, including workload
+generation. A generator function appearing prominently in `perf report` does
+not mean it is inside the timed engine span. Profiling also perturbs latency,
+so compare latency percentiles from unprofiled runs.
+
 ### Wire to wire benchmark
 
 Computes the time it takes from the message sent onto the wire until
@@ -230,4 +251,3 @@ limit_aggressive        2521     17912  41200552  41836120  41902689        2182
 market                  1939     17714  40686356  41688934  41718212        50616        32667
 cancel                 47539     16534  41169391  41755289  42103631        92894        81737
 ```
-

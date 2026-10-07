@@ -40,13 +40,8 @@ to the price it refers to, with a slightly improved structure from
 
 ### Outbound message Writer
 
-The equivalent of the Inbound Message Receiver, but for the opposite purpose.
-All of the events that come out of the Matching Engine will then need to be
-fanned out of the system so that users of it are going to see what is going on.
-
-Drop-copy is private per firm: a firm only sees its own fills. Each outbound
-event carries the owning account; the writer routes by account, then broadcasts
-to every drop-copy session of that firm.
+The writer consumes messages produced by the Matching Engine and sends them
+back through the network to clients.
 
 ## Threading model
 
@@ -69,22 +64,13 @@ This means that this path must be single threaded. This will ensure coherence
 and total ordering that is deterministic and not casual. This is the reason
 this part will be single threaded.
 
-### Outbound message Writer - Threading Model
-
-Single fan-out thread: drains the engine's outbound queue, routes by account and
-writes to non-blocking sockets. The kernel send buffer acts as the per-session
-queue. A full send buffer (EAGAIN) means a slow session: drop or disconnect it,
-never block. Split sessions across more threads only if measurement shows one
-thread is not enough.
-
 ### Notes on Threading Model
 
 Inbound uses one MPSC queue (many receivers -> engine), carrying the raw message
 plus the account of the connection it arrived on. Outbound uses one SPSC queue
-(engine -> fan-out thread), carrying the raw message plus the destination
-account. The engine does one push per event and no routing. Not SPMC: SPMC hands
-each event to exactly one consumer, while drop-copy needs every event delivered
-to every session of the owning firm.
+(engine -> network writer), carrying the raw message plus the destination
+account. The engine does one push per event; network transmission happens
+outside the matching logic.
 
 ## Failure Handling
 

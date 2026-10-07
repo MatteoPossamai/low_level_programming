@@ -63,7 +63,7 @@ Rules learned over months. Follow them.
 
 ## Current position — Q4: matching engine
 
-Blocks 1-3 done to POC level (engine matches, cancels, emits OUCH responses; tested and baselined). Next: Block 4. Full plan lives in Notion. Block summary:
+Blocks 1-4 are complete. Block 5 (drop-copy) was removed from scope. Blocks 6-7 are complete: latency benchmarks, perf investigation, one targeted optimization, and the project write-up. The write-up is in [`ENGINE.md`](ENGINE.md) and may still be edited. Full plan lives in Notion. Block summary:
 
 - **Block 1** — Price-level data structure chosen by measurement (map vs sorted vector vs flat array vs intrusive lists, pool allocator underneath). Atlas method. Read WK Selph's order book post ONLY after forming own hypothesis.
   - **Status**: three structures implemented (`sorted_vector`, intrusive `list`, `tick_offset` sparse array), one shared Google-Benchmark workload harness. Winner by measurement at real-book scales: **tick_offset**. Full write-up + numbers in [`4_order_book_proj/DATA_STRUCTURE.md`](4_order_book_proj/DATA_STRUCTURE.md). Project layout, conventions, open items in [`4_order_book_proj/README.md`](4_order_book_proj/README.md).
@@ -75,15 +75,13 @@ Blocks 1-3 done to POC level (engine matches, cancels, emits OUCH responses; tes
 - **Block 3** — Design doc first, then matching core: price-time priority, limit/market/cancel. Modify = stretch. Self-trade prevention = out of scope. Deterministic replay input, invariant/property tests.
   - **Status**: design in `4_order_book_proj/DESIGN_DOC.md`; engine in `src/engine.hpp` (tick-offset book, intrusive FIFO per level, pool-allocated blocks). Orders keyed by `(account << 32 | UserRefNum)` per spec. Sends Accepted first, two Executed per match (`R` incoming / `A` resting, resting price, shared match number), Canceled (`I` market rest, `Z` pool full, `U` user). Cancel = reduce to new open size, 0 removes. `process()` / `run()` entry points.
   - **Tests**: `tests/engine_test.cpp` — 15 exact input→output scenarios + a 200k-message random property test, ASan+UBSan clean. Mutation-checked: 5 injected bugs all caught.
-  - **Baseline** (`benchmark/engine_bench.cpp`, 50/48/2 enter/cancel/market, -O2, unpinned, CPU scaling on): ~12.3M msg/s (~81 ns/msg) at depth 1k, 11.5M/s at 50k. Target for Block 6 improvements.
+  - **Baseline** (`benchmark/engine_bench.cpp`, 50/48/2 enter/cancel/market, -O2, unpinned, CPU scaling on): ~12.3M msg/s (~81 ns/msg) at depth 1k, 11.5M/s at 50k. This throughput benchmark is separate from Block 6's latency measurements.
   - **Known POC limits (accepted)**: price used raw as array index (inbound must reject price >= BUFFER_SIZE and 0); `MARKETPRICE` 0x7FFFFFFF assumed on both sides; sides `T`/`E` throw; cancel qty read as new open size (spec wording ambiguous); no inbound validation stage yet.
-- **Block 4** — Transport interface FIRST (~3 functions), then epoll backend, then io_uring backend, swappable, benchmarked head-to-head. Expect epoll ≈ io_uring on loopback; explaining why is the finding.
+- **Block 4** — DONE. Transport interface, epoll backend, and io_uring backend are implemented and benchmarked head-to-head. The loopback comparison and interpretation are in `4_order_book_proj/benchmark/README.md`.
   - **Queues already in place** (`src/queues.hpp` + `queues_impl.hpp`): inbound MPSC (Vyukov-style, producers yield, consumer pauses) carrying `InboundMessage{account, raw bytes}` — the receiver must attach the connection's OUCH account; outbound SPSC carrying `OutboundMessage{account, raw bytes}`. Both blocking-only by his choice.
-- **Block 5** — Drop-copy fan-out. Slow consumer must not affect hot path; policy = drop/disconnect laggards, documented.
-  - **Decided**: drop-copy is private per firm — route by owning account, broadcast to every session of that firm. One outbound queue from the engine; a fan-out thread routes and writes non-blocking sockets. SPMC was rejected (splits the stream).
-  - **Open**: outbound `enqueue` blocks when full, so a stalled fan-out stalls the engine. The drop/disconnect policy lives in the fan-out thread (EAGAIN on send).
-- **Block 6** — Latency measurement: two views (RDTSC internal spans + wire-to-wire loopback), percentiles only (p50/p99/p99.9/max), HDR histogram, one perf-driven optimisation, one tail-latency spike investigated to root cause.
-- **Block 7** — Write-up / blog post — flagship portfolio piece.
+- **Block 5** — REMOVED FROM SCOPE: drop-copy fan-out.
+- **Block 6** — DONE for the current benchmark scope. `internal_engine_bench` measures engine processing through outbound enqueue; `wire_to_wire_bench` measures loopback client round trips. Both report p50/p99/p99.9/max. `perf stat`, topdown, and sampled call stacks were used to investigate CPU cost. Profiling localized long scans across empty price levels; tracking resting-order counts and stopping scans when a side is empty reduced the internal benchmark's recorded overall p99.9 from about 4.08 ms to 424 ns, and max from about 4.55 ms to 6.2 μs. Results and method are in `4_order_book_proj/benchmark/README.md`.
+- **Block 7** — DONE: project write-up is in [`ENGINE.md`](ENGINE.md); the document may still be edited.
 
 **Sequencing rule**: each stage end-to-end before the next. Shed from the tail, never the middle.
 
