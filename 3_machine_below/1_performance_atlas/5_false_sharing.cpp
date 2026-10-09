@@ -22,6 +22,7 @@ struct Summer_1 {
 };
 
 struct Summer_2 {
+  // Can use (alignas 1024)
   std::atomic<int> sum1;
   char padding[1024];
   std::atomic<int> sum2;

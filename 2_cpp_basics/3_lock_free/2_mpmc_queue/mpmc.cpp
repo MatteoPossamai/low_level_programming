@@ -16,11 +16,17 @@ template <typename T> class mpmc_queue {
   typedef char cacheline_pad_t[cache_line_size];
 
   // Pointers padded to avoid false sharing / memory ping-pong
+  //
+  // IMPL 1: old style
   cacheline_pad_t pad1_;
   std::atomic<size_t> enqueue_ptr;
   cacheline_pad_t pad2_;
   std::atomic<size_t> dequeue_ptr;
   cacheline_pad_t pad3_;
+
+  // IMPL 2: modern, >=C++11
+  // alignas(64) enqueue_ptr
+  // alignas(64) dequeue_ptr
 
   cell *buffer_;
   size_t buffer_mask;
