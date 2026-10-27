@@ -61,7 +61,7 @@ Rules learned over months. Follow them.
 - Tooling absorbed: modern CMake, Google Benchmark (`DoNotOptimize`/`ClobberMemory`), sanitizers by default, clang-format, clangd, cachegrind, godbolt as daily driver, `-fopt-info-vec`.
 - Key mental models acquired: readiness vs completion I/O models, syscall batching, why the real cost of virtual dispatch is missed inlining, UB as the price of optimisation, what makes the auto-vectoriser fire or bail, exception happy-path vs thrown-path asymmetry, and (from Meyers) modern C++ idiom — `auto`, move semantics pitfalls, `noexcept`, smart-pointer ownership, perfect forwarding.
 
-## Current position — Q4: matching engine
+**Q4 - Matching engine (complete for the agreed scope)**
 
 Blocks 1-4 are complete. Block 5 (drop-copy) was removed from scope. Blocks 6-7 are complete: latency benchmarks, perf investigation, one targeted optimization, and the project write-up. The write-up is in [`ENGINE.md`](ENGINE.md) and may still be edited. Full plan lives in Notion. Block summary:
 
@@ -83,6 +83,19 @@ Blocks 1-4 are complete. Block 5 (drop-copy) was removed from scope. Blocks 6-7 
 - **Block 6** — DONE for the current benchmark scope. `internal_engine_bench` measures engine processing through outbound enqueue; `wire_to_wire_bench` measures loopback client round trips. Both report p50/p99/p99.9/max. `perf stat`, topdown, and sampled call stacks were used to investigate CPU cost. Profiling localized long scans across empty price levels; tracking resting-order counts and stopping scans when a side is empty reduced the internal benchmark's recorded overall p99.9 from about 4.08 ms to 424 ns, and max from about 4.55 ms to 6.2 μs. Results and method are in `4_order_book_proj/benchmark/README.md`.
 - **Block 7** — DONE: project write-up is in [`ENGINE.md`](ENGINE.md); the document may still be edited.
 
+## Current position - Q5 complete: networking
+
+Matteo confirmed completion of the agreed networking reading and experiments.
+The quarter is complete; Q6 has not been chosen. Code, experiment notes, and
+captures live in [`5_network/`](5_network/), indexed by
+[`5_network/README.md`](5_network/README.md).
+
+- **Reading scope completed (author-reported)**: kernel receive path, TCP behaviour including Nagle / delayed ACK, UDP multicast for market data, and architectural understanding of kernel bypass and polling vs interrupts. This does not imply a DPDK/Onload implementation or a full-book read.
+- **Built**: length-prefixed TCP framing (`framing/`); one epoll receiver assembling data separately for multiple TCP connections (`multi_thread_rx/`); UDP multicast publisher/subscribers with sequence numbers, membership changes, and gap detection (`udp_mcast/`). Despite its folder name, `multi_thread_rx` uses one receiver event loop and a sender thread.
+- **Inspection**: TCP and UDP packet captures alongside the experiments; shared packet-inspection notes in [`0_tools_n_specs/WIRESHARK.md`](0_tools_n_specs/WIRESHARK.md).
+- **Scope limits**: multicast gap detection is implemented; recovery/retransmission is discussed, not implemented. These are learning experiments, not a production networking stack or physical-network latency benchmarks.
+- **Key mental models**: TCP is a byte stream and preserves no application message boundaries; per-connection receive state; readiness-based multiplexing; multicast fan-out and application-level loss detection.
+
 **Sequencing rule**: each stage end-to-end before the next. Shed from the tail, never the middle.
 
 Talks queued: Carl Cook _When a Microsecond Is an Eternity_ (before Block 3), David Gross _Trading at Light Speed_, Pikus _Branchless Programming_, Alexandrescu _Speed Is Found in the Minds of People_, Skarupke mutex/spinlock talk.
@@ -100,18 +113,19 @@ Deep expertise in systems programming, C++ as the primary language. Priority ord
 - **C++ first, Rust later.** Rationale above. Mara Bos _Rust Atomics and Locks_ is the planned entry point when Rust starts.
 - **Master's degree deprioritised** in favour of self-study + portfolio route. OMSCS remains a fallback if structure/credential become useful later.
 - **Dragon Book rejected** for compiler learning. Codegen understanding comes via godbolt experiments + Pikus + Godbolt/Carruth talks instead.
-- **Q5 leading candidate**: Casey Muratori's _Performance-Aware Programming_ (computerenhance.com, paid). Overlaps ~60% with Q1/Q3; the value is the other 40% — 8086 simulator approach, uops.info cycle estimation, paging deep-cuts, hand-written SIMD (his biggest remaining gap). Alternative Q5: Rust via Mara Bos. Decide after Q4 with the engine in hand.
-- **Networking roadmap sketched**: kernel receive path → TCP gotchas (Nagle / delayed-ACK) → UDP multicast for market data → architectural (not hands-on) understanding of kernel bypass (DPDK/Onload, busy-polling vs interrupts). Beej → TLPI ch. 56-61 when the time comes.
+- **Q5 completed as networking**: the former networking roadmap is complete for the agreed scope; artifacts are in `5_network/`.
+- **Q6 undecided**: Casey Muratori's _Performance-Aware Programming_ (computerenhance.com, paid) was an earlier candidate, not a commitment. Its potential value beyond Q1/Q3 was the 8086 simulator approach, cycle estimation with uops.info, paging details, and hand-written SIMD. Rust via Mara Bos remains deferred unless deliberately chosen. Discuss the next quarter after closing Q5; do not assume a selection.
 
 ## Repos and artifacts
 
 - `github.com/MatteoPossamai/low_level_programming` — allocators, perf guide, and later work. This repo.
 - Performance atlas: `3_machine_below/` — CMake + Google Benchmark, one folder per experiment with hypothesis/result/why READMEs.
+- Networking: `5_network/` — completed Q5 experiments, notes, and packet captures; start with `5_network/README.md`.
 - Q1-Q4 plans live in Notion as checkbox markdown.
 
 ## First interaction style
 
-- Ask where he is in Q4, then help with exactly that block.
+- Q1-Q5 are complete for their agreed scope. Help with the requested follow-up or next-quarter discussion; do not ask where he is in Q4.
 - Don't summarise this document back at him.
 - Don't propose restructuring the curriculum. The plan is good.
 - What he needs: execution support, reviews, nudges, honest measurement interpretation.
