@@ -1,8 +1,8 @@
 # Low Level Programming
 
 Self-educating repository to learn concepts of low level programming, C/C++.
-Organised in quarters: one book + one project each. Full curriculum history and
-direction in [AGENTS.md](AGENTS.md).
+Organised in quarters, usually one book + one project each. Q6 has two
+interleaved tracks. Full curriculum history and direction in [AGENTS.md](AGENTS.md).
 
 ## Map
 
@@ -13,10 +13,12 @@ direction in [AGENTS.md](AGENTS.md).
 | Q3 | [`3_machine_below`](3_machine_below/) | Performance atlas (hardware effects) and compiler atlas (codegen decisions), both benchmarked with annotated asm; epoll and io_uring echo servers |
 | Q4 | [`4_order_book_proj`](4_order_book_proj/) | Matching engine: price-level structure chosen by measurement, pool allocator, OUCH 5.0 codec, lock-free queues, price-time matching core with scenario tests and a baseline benchmark |
 | Q5 | [`5_network`](5_network/) | Networking: TCP framing, an epoll receiver for multiple connections, UDP multicast with application-level gap detection, and packet captures |
+| Q6 | [`6_simd_n_storage`](6_simd_n_storage/) | Planned: SIMD image processing and a Pi camera application, alternating with a persistent key-value store; theory syllabus, completion criteria, and hardware notes |
 | — | [`0_tools_n_specs`](0_tools_n_specs/) | Tooling references (compiler flags, build recipes) |
 
-Q1-Q5 are complete for their agreed scope. Q6 is undecided. Networking reading
-and experiments are recorded in [`5_network/README.md`](5_network/README.md).
+Q1-Q5 are complete for their agreed scope. Q6 is planned; implementation has
+not started. Its copyable plan is in [`6_simd_n_storage/README.md`](6_simd_n_storage/README.md),
+with purchasing details in [`HARDWARE.md`](6_simd_n_storage/HARDWARE.md).
 
 ## Books covered
 

@@ -61,5 +61,6 @@ it is work in progress, not an IETF standard.
 
 ## Next quarter
 
-Q6 is undecided. Further networking research is a possible follow-up, not an
-unfinished requirement of Q5.
+Q6 is planned as [SIMD/image processing and persistent storage](../6_simd_n_storage/README.md).
+Further networking research is a possible follow-up, not an unfinished
+requirement of Q5.

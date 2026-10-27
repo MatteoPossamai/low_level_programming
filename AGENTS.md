@@ -4,7 +4,7 @@ This file gives context to any agent or tool working in this repo. Read it fully
 
 ## What this repo is
 
-A self-directed systems programming curriculum, organised in quarters. Each quarter = one book + one project. The project is the deliverable; the book supports it.
+A self-directed systems programming curriculum, organised in quarters. Usually one book + one project per quarter; Q6 deliberately has two interleaved tracks and can run longer. Projects are the deliverables; reading supports them.
 
 ## Who you're working with
 
@@ -83,10 +83,10 @@ Blocks 1-4 are complete. Block 5 (drop-copy) was removed from scope. Blocks 6-7 
 - **Block 6** — DONE for the current benchmark scope. `internal_engine_bench` measures engine processing through outbound enqueue; `wire_to_wire_bench` measures loopback client round trips. Both report p50/p99/p99.9/max. `perf stat`, topdown, and sampled call stacks were used to investigate CPU cost. Profiling localized long scans across empty price levels; tracking resting-order counts and stopping scans when a side is empty reduced the internal benchmark's recorded overall p99.9 from about 4.08 ms to 424 ns, and max from about 4.55 ms to 6.2 μs. Results and method are in `4_order_book_proj/benchmark/README.md`.
 - **Block 7** — DONE: project write-up is in [`ENGINE.md`](ENGINE.md); the document may still be edited.
 
-## Current position - Q5 complete: networking
+**Q5 - Networking (complete for the agreed scope)**
 
 Matteo confirmed completion of the agreed networking reading and experiments.
-The quarter is complete; Q6 has not been chosen. Code, experiment notes, and
+The quarter is complete. Code, experiment notes, and
 captures live in [`5_network/`](5_network/), indexed by
 [`5_network/README.md`](5_network/README.md).
 
@@ -95,6 +95,22 @@ captures live in [`5_network/`](5_network/), indexed by
 - **Inspection**: TCP and UDP packet captures alongside the experiments; shared packet-inspection notes in [`0_tools_n_specs/WIRESHARK.md`](0_tools_n_specs/WIRESHARK.md).
 - **Scope limits**: multicast gap detection is implemented; recovery/retransmission is discussed, not implemented. These are learning experiments, not a production networking stack or physical-network latency benchmarks.
 - **Key mental models**: TCP is a byte stream and preserves no application message boundaries; per-connection receive state; readiness-based multiplexing; multicast fan-out and application-level loss detection.
+
+## Current position - Q6 planned: SIMD and storage
+
+Matteo chose two interleaved C++ tracks. Implementation has not started.
+The plan and Notion-compatible checkboxes are in
+[`6_simd_n_storage/README.md`](6_simd_n_storage/README.md);
+hardware recommendations and dated purchasing notes are in
+[`6_simd_n_storage/HARDWARE.md`](6_simd_n_storage/HARDWARE.md).
+
+- **SIMD**: scalar image references, compiler auto-vectorisation, handwritten Arm Neon kernels, stencils/reductions, and a Pi camera application using pretrained face detection/recognition. Compare kernel and end-to-end costs; no assumed speedup or frame rate.
+- **Storage**: a small single-process/writer persistent key-value store, append/read, replayed index, explicit durability, record-integrity checks, failure recovery, compaction, and measurements. SQL, replication, and multi-key transactions are deferred.
+- **Theory is required**: Algorithmica SIMD; selected Computer, Enhance! Part 3/5 lessons; Arm Neon documentation; all Database Internals Part I chapters 1-7; SQLite durability and Linux fsync/rename semantics; OpenCV/Pi camera concepts. Readings are assigned to blocks, not an optional appendix.
+- **Rhythm**: SIMD 1 -> Storage 1 -> SIMD 2 -> Storage 2 -> SIMD 3 -> Storage 3 -> Camera -> Write-up. Finish the current block before switching; the quarter may run longer than earlier ones.
+- **Hardware recommendation, not a purchase**: Pi 5 4 GB, cooling, official supply, microSD, Camera Module 3 Standard. Budget is unconfirmed. The first blocks can start on the current computer; the Pi is needed for the Neon block.
+- **Important distinctions**: Casey's x86 examples and uops.info timings do not directly predict Arm timings; killing a process does not simulate OS/power failure; reading about B-trees/LSM trees does not commit the project to implementing them.
+- **Integration**: SIMD/camera and storage remain independently testable deliverables. Using the store for profiles/events is stretch work after both work separately. Neural-network training and GPU/NPU programming are deferred.
 
 **Sequencing rule**: each stage end-to-end before the next. Shed from the tail, never the middle.
 
@@ -114,18 +130,19 @@ Deep expertise in systems programming, C++ as the primary language. Priority ord
 - **Master's degree deprioritised** in favour of self-study + portfolio route. OMSCS remains a fallback if structure/credential become useful later.
 - **Dragon Book rejected** for compiler learning. Codegen understanding comes via godbolt experiments + Pikus + Godbolt/Carruth talks instead.
 - **Q5 completed as networking**: the former networking roadmap is complete for the agreed scope; artifacts are in `5_network/`.
-- **Q6 undecided**: Casey Muratori's _Performance-Aware Programming_ (computerenhance.com, paid) was an earlier candidate, not a commitment. Its potential value beyond Q1/Q3 was the 8086 simulator approach, cycle estimation with uops.info, paging details, and hand-written SIMD. Rust via Mara Bos remains deferred unless deliberately chosen. Discuss the next quarter after closing Q5; do not assume a selection.
+- **Q6 selected**: SIMD/image processing and persistent storage, alternating complete blocks with required theory. Casey's course supports selected CPU/SIMD topics rather than committing to the full 8086 simulator course. Rust via Mara Bos remains deferred.
 
 ## Repos and artifacts
 
 - `github.com/MatteoPossamai/low_level_programming` — allocators, perf guide, and later work. This repo.
 - Performance atlas: `3_machine_below/` — CMake + Google Benchmark, one folder per experiment with hypothesis/result/why READMEs.
 - Networking: `5_network/` — completed Q5 experiments, notes, and packet captures; start with `5_network/README.md`.
+- Q6: `6_simd_n_storage/` - planned SIMD/camera and storage tracks; README contains the copyable plan, HARDWARE.md the purchasing snapshot.
 - Q1-Q4 plans live in Notion as checkbox markdown.
 
 ## First interaction style
 
-- Q1-Q5 are complete for their agreed scope. Help with the requested follow-up or next-quarter discussion; do not ask where he is in Q4.
+- Q1-Q5 are complete for their agreed scope. Q6 is planned as SIMD and storage; help with the requested block or planning detail. Do not restart the curriculum-selection discussion unless asked.
 - Don't summarise this document back at him.
 - Don't propose restructuring the curriculum. The plan is good.
 - What he needs: execution support, reviews, nudges, honest measurement interpretation.
