@@ -1,22 +1,27 @@
 // Compiled with:
 // Non vectorized:
 // clang++ -std=c++20 -Wall -Wextra -O3 -fno-vectorize -fno-slp-vectorize
-// images.cpp
+// images.cpp -o nv.out
 // Auto vectorized: clang++ -std=c++20 -Wall -Wextra -O3
 // -march=native -Rpass=loop-vectorize -Rpass-missed=loop-vectorize
-// -Rpass-analysis=loop-vectorize images.cpp
+// -Rpass-analysis=loop-vectorize images.cpp -o yv.out
 
 // Non vectorized output:
-// grayscale: 0,167ms
-// threshold: 0,157ms
+// grayscale: 85,5us
+// threshold: 99.1us
 //
 // Vectorized:
-// grayscale: 0.112ms
-// threshold: 0.090ms
+// grayscale: 30.9us
+// threshold: 30.8us
+//
+// Speedup:
+// grayscale: 2.8x
+// threshold: 3.2x
 
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <iostream>
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -44,6 +49,9 @@ int main() {
   std::cout << "Starting grayscale generation" << std::endl;
   unsigned char *grayscale_arr =
       new unsigned char[width * height * DESIRED_CHS];
+  // Touch output memory before timing; keep the writes.
+  std::memset(grayscale_arr, 0, width * height * DESIRED_CHS);
+  asm volatile("" : : "r"(grayscale_arr) : "memory");
   auto t1 = Clock::now();
   for (int i = 0; i < width * height; ++i) {
     int r = data[i * DESIRED_CHS + 0];
@@ -67,6 +75,9 @@ int main() {
   // Thresholding
   std::cout << "Starting threashold generation" << std::endl;
   unsigned char *thr_arr = new unsigned char[width * height * DESIRED_CHS];
+  // Touch output memory before timing; keep the writes.
+  std::memset(thr_arr, 0, width * height * DESIRED_CHS);
+  asm volatile("" : : "r"(thr_arr) : "memory");
   t1 = Clock::now();
   for (int i = 0; i < width * height; ++i) {
     int r = data[i * DESIRED_CHS + 0];
