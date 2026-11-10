@@ -9,14 +9,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(benchmark REQUIRED)
 
-add_executable(bench_conv bench_conv.cpp)
+add_executable(bench_conv bench_conv.cpp stb_impl.cpp)
 target_link_libraries(bench_conv PRIVATE
     benchmark::benchmark
 )
 
 target_compile_options(bench_conv PRIVATE
     -O2 -march=native -g -Wall -Wextra -Wshadow -std=c++20
-    -save-temps=obj -Rpass=loop-vectorize
+)
+
+# Keep optimization remarks focused on the benchmark source. stb's
+# implementation is compiled separately in stb_impl.cpp.
+set_source_files_properties(bench_conv.cpp PROPERTIES
+    COMPILE_OPTIONS "-Rpass=loop-vectorize"
 )
 
 add_executable(test_1 test_1.cpp)
