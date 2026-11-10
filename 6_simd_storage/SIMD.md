@@ -4,11 +4,12 @@ Single instruction multiple data.
 
 - [Source](https://en.algorithmica.org/hpc/simd/)
 - [Intel Resource](https://www.intel.com/content/dam/develop/external/us/en/documents/31848-compilerautovectorizationguide.pdf)
+- [Cheat-Sheet](https://db.in.tum.de/~finis/x86%20intrinsics%20cheat%20sheet%20v1.0.pdf)
 
 ## Introduction
 
 `avx2` extension for SIMD. GCC assumes that at most CPU has 128b registers
-while CPUs with `avx2` are higher. Telling compiler necessary to improve
+while CPUs with `avx2` and `avx-512` are higher. Telling compiler necessary to improve
 performance automatically.
 
 Both GCC and Clang default to the x86-64 baseline (SSE2, 128-bit vectors). Wider vector instruction sets must be explicitly enabled.
@@ -67,7 +68,7 @@ If the array is not divisible by the size of the register, can either pad it or
 do the last iteration in a scalar way. First preferred usually.
 
 Typical intrinsic format: `_mm<size>_<action>_<type>`. Useful [cheat-sheet](https://db.in.tum.de/~finis/x86%20intrinsics%20cheat%20sheet%20v1.0.pdf)
-These are very CPU specific. A bit more portable is: 
+These are very CPU specific. A bit more portable is:
 
 ```c++
 typedef int v8si __attribute__ (( vector_size(32) ));
@@ -130,7 +131,7 @@ To count occurrences can generate a mask for the given number, and then sum all 
 Not always the compiler is able to vectorize automatically loops and operations
 due to some technical difficulties. You can help it with Contract Programming.
 
-To allow simpler verctorization, make clear to the compiler the size of arrays, and
+To allow simpler vectorization, make clear to the compiler the size of arrays, and
 pad them yourself to be multiple of cache lines, to make it more obvious to it. Also
 restrict parameter to avoid memory aliasing, so that the compiler can be sure and optimize
 it well. Try to align all in multiples of the cache and register sizes.
@@ -140,4 +141,4 @@ Read ASM or use `-fopt-info-vec-optimized` to verify weather vectorization happe
 SPMD = single program multiple data is when write code that is scalar but it works on
 vectorized data as well. Specific to languages and APIs.
 
-Compile with `-S` to see the assembly. Vectorized operations start with `v` usually.
+Compile with `-S` to see the assembly only, or `-save-temps=obj` to see all. Vectorized operations start with `v` usually.
