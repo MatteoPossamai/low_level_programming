@@ -1,17 +1,37 @@
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <optional>
 #include <string>
+
 template <typename K_t, typename V_t> class Bitcask {
+  static_assert(std::is_trivially_copyable_v<K_t>);
+  static_assert(std::is_trivially_copyable_v<V_t>);
+
+  static constexpr size_t KEY_SIZE = sizeof(K_t);
+  static constexpr size_t VAL_SIZE = sizeof(V_t);
+  std::array<char, KEY_SIZE + VAL_SIZE> buffer{};
+  size_t end_ptr;
+
   std::fstream file;
-  std::map<K_t, V_t> index; // Balanced BST, like RB. Already sorted inherently
+  std::map<K_t, size_t>
+      index; // Balanced BST, like RB. Already sorted inherently
 
 public:
   Bitcask() = delete;
   explicit Bitcask(std::string filename) {
     file.open(filename, std::ios::in | std::ios::out | std::ios::binary);
+    size_t counter = 0;
 
-    // TODO: recreated the index operation
+    while (file.read(buffer.data(), buffer.size())) {
+      K_t key;
+      std::memcpy(&key, buffer.data(), KEY_SIZE);
+      index[key] = (KEY_SIZE + VAL_SIZE) * counter;
+      ++counter;
+    }
+    file.seekg(0);                // Move read pointer to start
+    file.seekp(0, std::ios::end); // Move write pointer to end
+    end_ptr = counter;
   }
 
   Bitcask(const Bitcask &src) = delete;
@@ -24,6 +44,22 @@ public:
   }
 
   // API
-  size_t put(K_t key, V_t value); // TODO: implement
-  std::optional<V_t> get(K_t key); // TODO: implement
+  size_t put(K_t key, V_t value) {
+    file << key << value;
+    index[key] = end_ptr * (KEY_SIZE + VAL_SIZE);
+    end_ptr + 1;
+    return 0;
+  }
+
+  std::optional<V_t> get(K_t key) {
+    if (!index.contains(key)) {
+      return nullptr;
+    }
+    size_t offset = index.get(key);
+    file.seekg(offset);
+    file.read(buffer.data(), buffer.size());
+    V_t value;
+    std::memcpy(&value, buffer.data() + KEY_SIZE, VAL_SIZE);
+    return value;
+  }
 };
