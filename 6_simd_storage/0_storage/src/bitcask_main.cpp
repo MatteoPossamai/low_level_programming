@@ -49,7 +49,7 @@ int main() {
     std::uniform_int_distribution<K_T> keys{0, 99};
     std::uniform_int_distribution<int> values{1, 1000};
 
-    for (int i = 0; i < 10000; ++i) {
+    for (int i = 0; i < 200; ++i) {
       K_T key = keys(rng);
       switch (operations(rng)) {
       case 0: {
