@@ -7,6 +7,7 @@ The database is a simple key value store.
 
 - `put(key, value)`: writes or updates values at that key. Should always succeed unless hardware failures
 - `get(key)`: reads the value of a given key. If the key is not provided will signify with Algebraic data types.
+- `del(key)`: if key exists is deleted. If not, is a no-op
 
 ## Record format
 

@@ -1,5 +1,7 @@
+#include <array>
 #include <cstring>
 #include <fstream>
+#include <ios>
 #include <map>
 #include <optional>
 #include <string>
@@ -20,15 +22,19 @@ template <typename K_t, typename V_t> class Bitcask {
 public:
   Bitcask() = delete;
   explicit Bitcask(std::string filename) {
-    file.open(filename, std::ios::in | std::ios::out | std::ios::binary);
+    file.open(filename, std::ios::in | std::ios::out | std::ios::binary |
+                            std::fstream::app);
     size_t counter = 0;
 
-    while (file.read(buffer.data(), buffer.size())) {
+    while (
+        file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()))) {
       K_t key;
       std::memcpy(&key, buffer.data(), KEY_SIZE);
       index[key] = (KEY_SIZE + VAL_SIZE) * counter;
       ++counter;
     }
+
+    file.clear();
     file.seekg(0);                // Move read pointer to start
     file.seekp(0, std::ios::end); // Move write pointer to end
     end_ptr = counter;
@@ -45,21 +51,27 @@ public:
 
   // API
   size_t put(K_t key, V_t value) {
-    file << key << value;
+    file.write(reinterpret_cast<const char *>(&key), KEY_SIZE);
+    file.write(reinterpret_cast<const char *>(&value),VAL_SIZE);
     index[key] = end_ptr * (KEY_SIZE + VAL_SIZE);
-    end_ptr + 1;
+    ++end_ptr;
     return 0;
   }
 
+  size_t del(K_t key) { return put(key, static_cast<V_t>(0)); }
+
   std::optional<V_t> get(K_t key) {
     if (!index.contains(key)) {
-      return nullptr;
+      return {};
     }
-    size_t offset = index.get(key);
-    file.seekg(offset);
-    file.read(buffer.data(), buffer.size());
+    size_t offset = index[key];
+    file.seekg(static_cast<std::streamsize>(offset));
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
     V_t value;
     std::memcpy(&value, buffer.data() + KEY_SIZE, VAL_SIZE);
+    if (value == static_cast<V_t>(0)) {
+      return {};
+    }
     return value;
   }
 };
