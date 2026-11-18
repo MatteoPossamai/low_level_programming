@@ -11,8 +11,10 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
 endif()
 
+find_package(ZLIB REQUIRED)
 add_executable(bitcask_main src/bitcask_main.cpp)
 target_compile_options(bitcask_main PRIVATE
   -O2 -g -march=native -Wall
   -Wextra -Wpedantic -Wconversion
 )
+target_link_libraries(bitcask_main PRIVATE ZLIB::ZLIB)

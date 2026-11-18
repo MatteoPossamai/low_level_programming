@@ -11,18 +11,13 @@ The database is a simple key value store.
 
 ## Record format
 
-A single entry in the disk file will look like:
-
-```md
-<key_length><key><value_length><value>
+```text
+<key><value><CRC-32>
 ```
 
-But given that types and length are implicitly given by the type the
-templated class is implemented with, we can skip them and just use:
-
-```md
-<key><value>
-```
+Key and value sizes come from their C++ types. CRC-32 occupies 4 bytes and
+covers the stored key and value bytes. Files use native object representations;
+reopen them with the same types and a compatible platform.
 
 ## Index
 
@@ -37,3 +32,28 @@ In case of delete, a new entry with a tombstone will be made, so that this is se
 ## Ownership
 
 To simplify the access patterns, the ownership model will start with a single process, that has a single writer. There might be different reader threads, but this might change.
+
+## Recovery
+
+- On reopening, scan records and rebuild the index. The latest record wins.
+- Truncate an incomplete final record before accepting more writes.
+- Reject a complete record with a checksum mismatch, including at the end.
+- Report replay read errors instead of truncating the file.
+
+## Durability
+
+Not implemented yet: writes are buffered, with no explicit disk sync.
+Current success returns do not promise survival after a crash or power loss.
+
+Required behaviour:
+
+- Per-write syncing: write the record, flush any stream buffer, sync the file,
+  then acknowledge success. Report write and sync failures.
+- Batched syncing: sync a group of records. Only acknowledge them as durable
+  after that sync succeeds. Compare latency with per-write syncing.
+- A write interrupted before acknowledgement may survive or be lost.
+
+Durability assumes the filesystem and device honour sync requests. File creation
+also requires syncing the parent directory to persist the new filename.
+Killing a process tests process failure, not OS failure or power loss.
+Recovery tests, I/O checks, sync policies, and measurements are still pending.
