@@ -24,6 +24,8 @@ public:
   explicit Bitcask(std::string filename) {
     file.open(filename, std::ios::in | std::ios::out | std::ios::binary |
                             std::fstream::app);
+    if (!file.is_open())
+      throw std::ios_base::failure("Cannot open database file: " + filename);
     size_t counter = 0;
 
     while (
