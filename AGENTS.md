@@ -24,6 +24,7 @@ Rules learned over months. Follow them.
 - He responds well to reasoned pushback. Push back when he is wrong; explain why.
 - Reviews: prioritised lists (bugs first, then design, then nits) with honest verdicts.
 - Plans: Notion-compatible markdown — blocks (not weeks), checkboxes, dry goals, explicit "done when" flags, resource links at the end.
+- When creating or changing a plan, update the repository plan and include the complete Notion-ready markdown checklist in the response so Matteo can paste it directly. Do not make him ask for the copyable checklist separately.
 - Hypothesis-before-measurement is core to how he learns: predict, measure, explain the gap. Preserve this pattern in every experiment/review.
 - Prefer explanations that connect code to hardware (cache lines, memory ordering, syscalls) over surface-level fixes.
 - Projects stay small, self-contained, benchmarkable. Correctness first, then measurement, then optimisation — in that order.
@@ -96,21 +97,18 @@ captures live in [`5_network/`](5_network/), indexed by
 - **Scope limits**: multicast gap detection is implemented; recovery/retransmission is discussed, not implemented. These are learning experiments, not a production networking stack or physical-network latency benchmarks.
 - **Key mental models**: TCP is a byte stream and preserves no application message boundaries; per-connection receive state; readiness-based multiplexing; multicast fan-out and application-level loss detection.
 
-## Current position - Q6 planned: SIMD and storage
+## Current position - Q6: SIMD image processing and storage
 
-Matteo chose two interleaved C++ tracks. Implementation has not started.
-The plan and Notion-compatible checkboxes are in
-[`6_simd_n_storage/README.md`](6_simd_n_storage/README.md);
-hardware recommendations and dated purchasing notes are in
-[`6_simd_n_storage/HARDWARE.md`](6_simd_n_storage/HARDWARE.md).
+Q6 has two interleaved C++ tracks. The Block 1 SIMD foundation is implemented:
+image layout, scalar grayscale/threshold kernels, tests, and a scalar-versus-
+auto-vectorised comparison. The plan is in [`6_simd_storage/README.md`](6_simd_storage/README.md).
 
-- **SIMD**: scalar image references, compiler auto-vectorisation, handwritten Arm Neon kernels, stencils/reductions, and a Pi camera application using pretrained face detection/recognition. Compare kernel and end-to-end costs; no assumed speedup or frame rate.
+- **SIMD**: continue with handwritten SIMD and image filters/reductions on the current computer, using its available instruction set. No Pi, camera application, or hardware purchase is in scope.
 - **Storage**: a small single-process/writer persistent key-value store, append/read, replayed index, explicit durability, record-integrity checks, failure recovery, compaction, and measurements. SQL, replication, and multi-key transactions are deferred.
-- **Theory is required**: Algorithmica SIMD; selected Computer, Enhance! Part 3/5 lessons; Arm Neon documentation; all Database Internals Part I chapters 1-7; SQLite durability and Linux fsync/rename semantics; OpenCV/Pi camera concepts. Readings are assigned to blocks, not an optional appendix.
-- **Rhythm**: SIMD 1 -> Storage 1 -> SIMD 2 -> Storage 2 -> SIMD 3 -> Storage 3 -> Camera -> Write-up. Finish the current block before switching; the quarter may run longer than earlier ones.
-- **Hardware recommendation, not a purchase**: Pi 5 4 GB, cooling, official supply, microSD, Camera Module 3 Standard. Budget is unconfirmed. The first blocks can start on the current computer; the Pi is needed for the Neon block.
-- **Important distinctions**: Casey's x86 examples and uops.info timings do not directly predict Arm timings; killing a process does not simulate OS/power failure; reading about B-trees/LSM trees does not commit the project to implementing them.
-- **Integration**: SIMD/camera and storage remain independently testable deliverables. Using the store for profiles/events is stretch work after both work separately. Neural-network training and GPU/NPU programming are deferred.
+- **Theory is required**: Algorithmica SIMD; selected Computer, Enhance! Part 3/5 lessons; documentation for the current CPU's SIMD instructions; all Database Internals Part I chapters 1-7; SQLite durability and Linux fsync/rename semantics; OpenCV filtering/resizing theory.
+- **Rhythm**: SIMD 1 -> Storage 1 -> SIMD 2 -> Storage 2 -> SIMD 3 -> Storage 3 -> Write-up. Finish the current block before switching; the quarter may run longer than earlier ones.
+- **Important distinctions**: benchmark conclusions are specific to the tested CPU and compiler; killing a process does not simulate OS/power failure; reading about B-trees/LSM trees does not commit the project to implementing them.
+- **Integration**: SIMD/image processing and storage remain independently testable deliverables. Cross-project integration is optional.
 
 **Sequencing rule**: each stage end-to-end before the next. Shed from the tail, never the middle.
 
@@ -137,7 +135,7 @@ Deep expertise in systems programming, C++ as the primary language. Priority ord
 - `github.com/MatteoPossamai/low_level_programming` — allocators, perf guide, and later work. This repo.
 - Performance atlas: `3_machine_below/` — CMake + Google Benchmark, one folder per experiment with hypothesis/result/why READMEs.
 - Networking: `5_network/` — completed Q5 experiments, notes, and packet captures; start with `5_network/README.md`.
-- Q6: `6_simd_n_storage/` - planned SIMD/camera and storage tracks; README contains the copyable plan, HARDWARE.md the purchasing snapshot.
+- Q6: `6_simd_storage/` - SIMD image processing on the current computer and persistent storage; README contains the plan.
 - Q1-Q4 plans live in Notion as checkbox markdown.
 
 ## First interaction style

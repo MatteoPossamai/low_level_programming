@@ -13,12 +13,11 @@ interleaved tracks. Full curriculum history and direction in [AGENTS.md](AGENTS.
 | Q3 | [`3_machine_below`](3_machine_below/) | Performance atlas (hardware effects) and compiler atlas (codegen decisions), both benchmarked with annotated asm; epoll and io_uring echo servers |
 | Q4 | [`4_order_book_proj`](4_order_book_proj/) | Matching engine: price-level structure chosen by measurement, pool allocator, OUCH 5.0 codec, lock-free queues, price-time matching core with scenario tests and a baseline benchmark |
 | Q5 | [`5_network`](5_network/) | Networking: TCP framing, an epoll receiver for multiple connections, UDP multicast with application-level gap detection, and packet captures |
-| Q6 | [`6_simd_n_storage`](6_simd_n_storage/) | Planned: SIMD image processing and a Pi camera application, alternating with a persistent key-value store; theory syllabus, completion criteria, and hardware notes |
+| Q6 | [`6_simd_storage`](6_simd_storage/) | SIMD image-processing kernels on the current computer, alternating with a persistent key-value store |
 | — | [`0_tools_n_specs`](0_tools_n_specs/) | Tooling references (compiler flags, build recipes) |
 
 Q1-Q5 are complete for their agreed scope. Q6 is planned; implementation has
-not started. Its copyable plan is in [`6_simd_n_storage/README.md`](6_simd_n_storage/README.md),
-with purchasing details in [`HARDWARE.md`](6_simd_n_storage/HARDWARE.md).
+started. Its copyable plan is in [`6_simd_storage/README.md`](6_simd_storage/README.md).
 
 ## Books covered
 
